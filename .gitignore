@@ -1,0 +1,42 @@
+ # Ignore the todo markdown file
+todo.md
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+coverage/
+
+# Build outputs
+dist/
+build/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+
+# Temporary files
+*.tmp
+*.temp
+
+# LLM API related (if any cache or temp files)
+.cache/
