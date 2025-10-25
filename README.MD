@@ -10,6 +10,9 @@ AI-powered travel planning assistant with natural conversation flow, powered by 
 - 🏛️ **Attraction Suggestions**: Curated recommendations for things to see and do
 - 🌦️ **Real-time Weather Data**: Current weather conditions via Open-Meteo API
 - 🌍 **Country Information**: Detailed country data via REST Countries API
+- 💱 **Currency Exchange**: Real-time exchange rates and conversions via ExchangeRate-API
+- 🏨 **Hotel Recommendations**: Accommodation advice and lodging tips via Wikivoyage
+- ✈️ **Flight Information**: Flight booking guidance and airline recommendations
 
 ### Advanced Features
 - 💬 **Context-Aware Conversations**: Remembers your preferences across the entire chat
@@ -105,8 +108,11 @@ src/
 │   ├── system.js          # System prompts and examples
 │   └── templates.js       # Query-specific templates
 └── services/
-    ├── weather.js         # Weather API integration
-    └── country.js         # Country API integration
+    ├── weather.js         # Weather data from Open-Meteo API
+    ├── country.js         # Country data from REST Countries API
+    ├── currency.js        # Currency exchange from ExchangeRate-API
+    ├── hotels.js          # Hotel recommendations from Wikivoyage
+    └── flights.js         # Flight information and booking guidance
 ```
 
 ## Prompt Engineering
@@ -124,7 +130,8 @@ See [PROMPT_ENGINEERING.md](PROMPT_ENGINEERING.md) for detailed documentation.
 ## Documentation
 
 - **[PROMPT_ENGINEERING.md](PROMPT_ENGINEERING.md)**: Deep dive into prompt design decisions
-- **[ENHANCEMENTS.md](ENHANCEMENTS.md)**: Advanced features and implementation details
+- **[ENHANCEMENTS.md](ENHANCEMENTS.md)**: Advanced features and implementation details  
+- **[ADDING_TOOLS.md](ADDING_TOOLS.md)**: Guide to adding new external API tools
 - **[transcripts/](transcripts/)**: Sample conversation examples
 
 ## Requirements Met
@@ -148,8 +155,8 @@ npm run test:watch
 ```
 
 **Test Coverage**:
-- 74 tests across 24 test suites
-- Services: Weather and Country extraction, formatting, caching
+- 96 tests across 30 test suites
+- Services: Weather, Country, and Currency extraction, formatting, caching
 - Prompts: Query type detection, template generation, system prompts
 - Configuration: Validation of all settings
 - Agent Logic: Tool detection, message history, response validation
