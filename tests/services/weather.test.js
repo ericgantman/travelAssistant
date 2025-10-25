@@ -74,8 +74,8 @@ describe('WeatherService', () => {
         it('should handle lowercase location mentions', () => {
             const message = "weather for paris";
             const location = weatherService.extractLocation(message);
-            // Lowercase locations will be extracted as-is by the pattern
-            assert.strictEqual(location, 'paris');
+            // Should capitalize location names properly
+            assert.strictEqual(location, 'Paris');
         });
     });
 

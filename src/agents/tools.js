@@ -7,6 +7,9 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { weatherService } from '../services/weather.js';
 import { countryService } from '../services/country.js';
+import { currencyService } from '../services/currency.js';
+import { hotelService } from '../services/hotels.js';
+import { flightService } from '../services/flights.js';
 
 /**
  * Weather Information Tool
@@ -283,10 +286,272 @@ export const contextAnalysisTool = new DynamicStructuredTool({
 });
 
 /**
+ * Currency Exchange Tool
+ * Fetches real-time currency exchange rates and performs conversions
+ */
+export const currencyTool = new DynamicStructuredTool({
+    name: "get_currency_exchange",
+    description: `Fetches real-time currency exchange rates and performs currency conversions.
+    
+    ALWAYS use this tool when the user asks about:
+    - Exchange rates: "what's the exchange rate for USD to EUR?", "how much is a dollar worth?"
+    - Currency conversion: "how much is 100 dollars in yen?", "convert 50 euros to pounds"
+    - Money planning: "how much local currency will I get?", "what's my budget in euros?"
+    - Budget conversion: "I have $500, what's that in yen?", "convert my budget to local currency"
+    - Price comparisons: "is that expensive in local currency?", "how much is that worth?"
+    
+    Returns accurate, real-time exchange data including:
+    - Current exchange rate
+    - Converted amount (if specified)
+    - Last update timestamp
+    - Formatted conversion result
+    
+    Supports all major world currencies: USD, EUR, GBP, JPY, CNY, INR, AUD, CAD, CHF, SEK, NOK, DKK, BRL, MXN, KRW, SGD, HKD, NZD, THB, AED, and more.
+    
+    Important: This tool provides REAL current exchange rates. Always use this for currency questions rather than estimating.`,
+
+    schema: z.object({
+        from: z.string().describe("Source currency code (e.g., 'USD', 'EUR', 'GBP')"),
+        to: z.string().describe("Target currency code (e.g., 'JPY', 'EUR', 'GBP')"),
+        amount: z.number().optional().describe("Optional amount to convert (e.g., 100, 500.50)")
+    }),
+
+    func: async ({ from, to, amount }) => {
+        try {
+            if (amount) {
+                // Perform conversion
+                const conversion = await currencyService.convertCurrency(amount, from, to);
+
+                if (!conversion) {
+                    return JSON.stringify({
+                        success: false,
+                        error: `Could not convert ${from} to ${to}. Please check currency codes are valid.`,
+                        suggestion: "Common codes: USD, EUR, GBP, JPY, CNY, INR, AUD, CAD, CHF"
+                    });
+                }
+
+                return JSON.stringify({
+                    success: true,
+                    conversion: conversion.formatted,
+                    details: {
+                        originalAmount: conversion.originalAmount,
+                        convertedAmount: conversion.convertedAmount,
+                        rate: conversion.rate,
+                        from: conversion.originalCurrency,
+                        to: conversion.targetCurrency
+                    },
+                    interpretation: {
+                        practical_tip: `At current rates, ${conversion.originalAmount} ${conversion.originalCurrency} gives you ${conversion.convertedAmount} ${conversion.targetCurrency}`,
+                        note: "Exchange rates update hourly. Actual rates at banks/exchange offices may vary slightly due to fees and commissions."
+                    }
+                });
+            } else {
+                // Just get the rate
+                const rateData = await currencyService.getExchangeRate(from, to);
+
+                if (!rateData) {
+                    return JSON.stringify({
+                        success: false,
+                        error: `Could not fetch exchange rate for ${from} to ${to}.`,
+                        suggestion: "Please verify currency codes. Common codes: USD, EUR, GBP, JPY, CNY, INR."
+                    });
+                }
+
+                return JSON.stringify({
+                    success: true,
+                    rate: `1 ${rateData.from} = ${rateData.rate} ${rateData.to}`,
+                    details: {
+                        from: rateData.from,
+                        to: rateData.to,
+                        rate: rateData.rate,
+                        lastUpdate: rateData.lastUpdate
+                    },
+                    interpretation: {
+                        example: `For example, 100 ${rateData.from} would give you ${rateData.calculation(100)} ${rateData.to}`,
+                        tip: "To convert a specific amount, ask with the amount included (e.g., 'convert 500 USD to EUR')"
+                    }
+                });
+            }
+        } catch (error) {
+            return JSON.stringify({
+                success: false,
+                error: error.message,
+                suggestion: "Continue conversation without currency data."
+            });
+        }
+    }
+});
+
+/**
+ * Hotel Search Tool
+ * Provides hotel recommendations and accommodation advice
+ */
+export const hotelTool = new DynamicStructuredTool({
+    name: "search_hotels",
+    description: `Provides hotel recommendations, accommodation advice, and lodging information for any city.
+    
+    ALWAYS use this tool when the user asks about:
+    - Hotels: "where to stay in Paris?", "good hotels in Tokyo?"
+    - Accommodation: "best area to stay?", "accommodation in Rome"
+    - Lodging advice: "hostel or hotel?", "budget hotels in London"
+    - Where to sleep: "place to stay in Barcelona", "sleep in Amsterdam"
+    - Budget options: "cheap hotels", "luxury resorts", "mid-range accommodation"
+    
+    Returns comprehensive accommodation information including:
+    - General recommendations for the city
+    - Budget-specific tips (budget/mid-range/luxury)
+    - Best neighborhoods/areas to stay
+    - Practical accommodation advice
+    - Links to booking resources
+    
+    Important: This tool provides REAL recommendations and practical advice. Use it whenever accommodation is mentioned.`,
+
+    schema: z.object({
+        city: z.string().describe("The city to search for hotels/accommodation (e.g., 'Paris', 'Tokyo', 'New York')"),
+        budgetLevel: z.enum(['budget', 'mid-range', 'luxury']).optional().describe("Optional budget level for tailored recommendations")
+    }),
+
+    func: async ({ city, budgetLevel }) => {
+        try {
+            // Get hotel recommendations
+            const hotelInfo = await hotelService.getHotelRecommendations(city);
+
+            if (!hotelInfo) {
+                return JSON.stringify({
+                    success: false,
+                    error: `Could not fetch hotel information for ${city}. City name may be incorrect or data unavailable.`,
+                    suggestion: "Provide general accommodation advice for this destination."
+                });
+            }
+
+            // Get budget-specific suggestions if requested
+            const budgetInfo = budgetLevel ?
+                hotelService.getBudgetSuggestions(budgetLevel) : null;
+
+            return JSON.stringify({
+                success: true,
+                city: hotelInfo.city,
+                recommendations: hotelInfo.recommendations,
+                bestAreas: hotelInfo.areas.length > 0 ? hotelInfo.areas : ['Central/Downtown area for easy access'],
+                generalInfo: hotelInfo.generalInfo || `${city} offers various accommodation options for all budgets`,
+                budgetAdvice: budgetInfo ? {
+                    level: budgetLevel,
+                    priceRange: budgetInfo.range,
+                    types: budgetInfo.types,
+                    tips: budgetInfo.tips
+                } : {
+                    general: [
+                        'Budget (hostels/budget hotels): $20-50/night',
+                        'Mid-range (3-star hotels): $50-150/night',
+                        'Luxury (4-5 star): $150+/night'
+                    ]
+                },
+                bookingTips: [
+                    'Book in advance for better rates',
+                    'Check multiple booking sites (Booking.com, Hotels.com, Airbnb)',
+                    'Read recent reviews from multiple sources',
+                    'Consider location vs. price tradeoffs',
+                    'Look for free cancellation options'
+                ],
+                practical_advice: {
+                    timing: 'Book 1-3 months in advance for best availability',
+                    location: 'Stay near public transport for easy city access',
+                    safety: 'Choose well-reviewed properties in safe neighborhoods'
+                }
+            });
+        } catch (error) {
+            return JSON.stringify({
+                success: false,
+                error: error.message,
+                suggestion: "Continue with general accommodation advice."
+            });
+        }
+    }
+});
+
+/**
+ * Flight Search Tool
+ * Provides flight information and booking guidance
+ */
+export const flightTool = new DynamicStructuredTool({
+    name: "search_flights",
+    description: `Provides flight information, airline recommendations, and booking guidance for travel between cities.
+    
+    ALWAYS use this tool when the user asks about:
+    - Flights: "flights from Paris to Tokyo", "how to fly to London"
+    - Airlines: "which airline flies to...?", "best airline for..."
+    - Travel routes: "how to get from X to Y", "travel from London to Paris"
+    - Flight booking: "when to book flights?", "cheap flights to..."
+    - Airfare advice: "flight prices", "best time to fly"
+    
+    Returns comprehensive flight information including:
+    - Route details and airport codes
+    - Estimated flight duration
+    - Booking site links (Skyscanner, Kayak, Google Flights)
+    - Money-saving tips
+    - Best booking times
+    - Budget flight strategies
+    
+    Important: This tool provides REAL booking guidance and practical tips. Use whenever flights or air travel are mentioned.`,
+
+    schema: z.object({
+        origin: z.string().describe("Origin city (e.g., 'Paris', 'New York', 'London')"),
+        destination: z.string().describe("Destination city (e.g., 'Tokyo', 'Rome', 'Bangkok')"),
+        departDate: z.string().optional().describe("Optional departure date in YYYY-MM-DD format")
+    }),
+
+    func: async ({ origin, destination, departDate }) => {
+        try {
+            // Get flight information
+            const flightInfo = await flightService.getFlightInfo(origin, destination, { departDate });
+
+            if (!flightInfo) {
+                return JSON.stringify({
+                    success: false,
+                    error: `Could not fetch flight information for ${origin} to ${destination}.`,
+                    suggestion: "Provide general flight booking advice."
+                });
+            }
+
+            return JSON.stringify({
+                success: true,
+                route: flightInfo.route,
+                duration: flightInfo.estimatedDuration,
+                bookingLinks: {
+                    skyscanner: flightInfo.bookingSites.skyscanner,
+                    kayak: flightInfo.bookingSites.kayak,
+                    googleFlights: flightInfo.bookingSites.googleFlights,
+                    note: 'Click these links to compare prices across airlines'
+                },
+                bookingTips: flightInfo.tips,
+                bestTimeToBook: flightInfo.bestTimeToBook,
+                budgetSavingTips: flightInfo.budgetTips,
+                generalAdvice: flightInfo.generalAdvice,
+                practical_info: {
+                    cheapest_days: 'Tuesday and Wednesday usually have lowest fares',
+                    booking_window: 'Book 2-3 months ahead for international flights',
+                    price_tracking: 'Use incognito mode to avoid price inflation',
+                    flexibility: 'Being flexible with dates can save 20-40%'
+                }
+            });
+        } catch (error) {
+            return JSON.stringify({
+                success: false,
+                error: error.message,
+                suggestion: "Continue with general flight advice."
+            });
+        }
+    }
+});
+
+/**
  * All tools array for easy agent initialization
  */
 export const travelTools = [
     weatherTool,
     countryTool,
-    contextAnalysisTool
+    contextAnalysisTool,
+    currencyTool,
+    hotelTool,
+    flightTool
 ];

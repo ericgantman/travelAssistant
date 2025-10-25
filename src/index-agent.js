@@ -33,14 +33,17 @@ function printWelcome() {
     console.log(chalk.dim('\n┌─ Powered By ─────────────────────────────────────────────────────┐'));
     console.log(chalk.dim('│') + chalk.white(' 🧠 LangChain ReAct Agent ') + chalk.gray('(Advanced Reasoning)') + chalk.dim('                │'));
     console.log(chalk.dim('│') + chalk.white(` 🤖 Ollama ${config.ollama.model} `) + chalk.gray('(8B Parameters)') + chalk.dim('                      │'));
-    console.log(chalk.dim('│') + chalk.white(' 🔧 3 Specialized Tools ') + chalk.gray('(Weather • Country • Context)') + chalk.dim('       │'));
+    console.log(chalk.dim('│') + chalk.white(' 🔧 6 Specialized Tools ') + chalk.gray('(Weather • Country • More)') + chalk.dim('        │'));
     console.log(chalk.dim('└──────────────────────────────────────────────────────────────────┘\n'));
 
     console.log(chalk.bold.yellow('💡 What I Can Help With:\n'));
     console.log(chalk.cyan('   ✓') + chalk.white(' Find your perfect destination based on preferences'));
     console.log(chalk.cyan('   ✓') + chalk.white(' Create smart, personalized packing lists'));
     console.log(chalk.cyan('   ✓') + chalk.white(' Recommend must-see attractions and activities'));
-    console.log(chalk.cyan('   ✓') + chalk.white(' Provide real-time weather and country insights\n'));
+    console.log(chalk.cyan('   ✓') + chalk.white(' Provide real-time weather and country insights'));
+    console.log(chalk.cyan('   ✓') + chalk.white(' Search flights and get booking guidance'));
+    console.log(chalk.cyan('   ✓') + chalk.white(' Find hotels and accommodation recommendations'));
+    console.log(chalk.cyan('   ✓') + chalk.white(' Convert currencies for budget planning\n'));
 
     console.log(chalk.bold.magenta('⚡ Quick Commands:\n'));
     console.log(chalk.gray('   /help    ') + chalk.white('→ Show this help message'));

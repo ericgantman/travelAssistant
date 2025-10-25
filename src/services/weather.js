@@ -16,26 +16,52 @@ class WeatherService {
      * Extracts location from user message
      */
     extractLocation(message) {
-        // Pattern matching for common location mentions
+        // Pattern matching for common location mentions (case insensitive)
         const contextPatterns = [
-            /(?:in|to|visit|visiting|going to|traveling to|weather in|weather for)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
-            /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:weather|climate|temperature)/gi,
+            // Match "visit/visiting" + location (non-greedy, stops at common words)
+            /\b(?:visit|visiting)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
+            // Match "going to/traveling to/travel to" + location
+            /\b(?:going to|traveling to|travel to)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
+            // Match "weather in/for" + location  
+            /\bweather\s+(?:in|for)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
+            // Match "in" + location (but not "in the" or "in a")
+            /\bin\s+([a-z]{3,}(?:\s+[a-z]+)?)\b(?!\s+the\b|\s+a\b)/i,
+            // Match location + "weather/climate/temperature"
+            /\b([a-z]{3,}(?:\s+[a-z]+)?)\s+(?:weather|climate|temperature)\b/i,
         ];
 
         // Try context-based patterns first
         for (const pattern of contextPatterns) {
-            const matches = [...message.matchAll(pattern)];
-            if (matches.length > 0) {
-                return matches[0][1].trim();
+            const match = message.match(pattern);
+            if (match && match[1]) {
+                let location = match[1].trim();
+
+                // Remove trailing time words
+                location = location.replace(/\s+(next|this|tomorrow|today|week|month)$/i, '');
+
+                // Skip if it's a common word, not a location
+                const skipWords = ['there', 'here', 'home', 'back', 'get', 'how', 'what'];
+                if (skipWords.includes(location.toLowerCase())) {
+                    continue;
+                }
+
+                // Capitalize properly (handle multi-word cities like "New York")
+                const capitalized = location
+                    .split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+
+                if (capitalized.length >= 3) {
+                    return capitalized;
+                }
             }
         }
 
         // Fallback: extract any capitalized words (likely place names)
-        // This handles cases like "Weather for paris?" or simple "Tokyo"
-        const capitalizedWords = message.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g);
+        const capitalizedWords = message.match(/\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?\b/g);
         if (capitalizedWords && capitalizedWords.length > 0) {
             // Filter out common words that aren't locations
-            const excludeWords = ['I', 'What', 'Where', 'When', 'How', 'Can', 'Should', 'Tell', 'Show', 'Give'];
+            const excludeWords = ['What', 'Where', 'When', 'How', 'Can', 'Should', 'Tell', 'Show', 'Give', 'The', 'This', 'That', 'Next', 'Week', 'Month', 'Year', 'Tomorrow', 'Today'];
             const filtered = capitalizedWords.filter(word => !excludeWords.includes(word));
             if (filtered.length > 0) {
                 return filtered[0];
