@@ -18,22 +18,7 @@ import { placesService } from '../services/places.js';
  */
 export const weatherTool = new DynamicStructuredTool({
     name: "get_weather",
-    description: `Fetches current real-time weather data for any location worldwide.
-    
-    ALWAYS use this tool when the user asks about:
-    - Weather conditions: "what's the weather in Paris?", "how warm is Tokyo?"
-    - Packing advice: "what should I pack for Iceland?", "what to bring to Bali?"
-    - Temperature queries: "is it cold in Moscow?", "current temperature in Sydney"
-    - Climate-related planning: "what to wear in London?", "is it raining in Seattle?"
-    
-    Returns complete weather data including:
-    - Current temperature in Celsius
-    - Weather condition (clear, cloudy, rainy, etc.)
-    - Humidity percentage
-    - Wind speed in km/h
-    - "Feels like" temperature
-    
-    Important: This tool provides REAL current data. Never guess or estimate weather information when this tool is available.`,
+    description: `Fetches current real-time weather data for any location. Returns temperature (°C), condition, humidity, wind speed, and "feels like" temperature. Use for packing advice, climate queries, or temperature questions. Provides REAL current data - never estimate weather.`,
 
     schema: z.object({
         location: z.string().describe("The city or location name to get weather for (e.g., 'Paris', 'Tokyo', 'New York')"),
@@ -85,25 +70,7 @@ export const weatherTool = new DynamicStructuredTool({
  */
 export const countryTool = new DynamicStructuredTool({
     name: "get_country_info",
-    description: `Fetches detailed, accurate information about any country in the world.
-    
-    ALWAYS use this tool when the user asks about:
-    - Currency and money: "what currency in Japan?", "money in France?"
-    - Languages: "what language do they speak in Brazil?", "languages in Switzerland?"
-    - Capital cities: "what's the capital of Kenya?", "capital of Australia?"
-    - Country facts: "population of India?", "timezone in Germany?"
-    - General country information when a country is mentioned
-    
-    Returns comprehensive country data:
-    - Official currency name and symbol
-    - Languages spoken
-    - Capital city
-    - Region and subregion
-    - Population
-    - Timezone(s)
-    - Driving side (left/right)
-    
-    Important: This tool provides REAL factual data. Always use this for country-specific information rather than relying on general knowledge.`,
+    description: `Fetches detailed country information including currency, languages, capital, population, timezone, and region. Use for currency/money questions, language queries, or general country facts. Provides REAL factual data.`,
 
     schema: z.object({
         country: z.string().describe("The country name to get information for (e.g., 'France', 'Japan', 'United States')"),
@@ -158,24 +125,7 @@ export const countryTool = new DynamicStructuredTool({
  */
 export const contextAnalysisTool = new DynamicStructuredTool({
     name: "analyze_user_context",
-    description: `Analyzes complex user messages to extract and structure travel preferences and requirements.
-    
-    Use this tool when the user provides multiple requirements or preferences in a single message, such as:
-    - Budget constraints: "affordable", "luxury", "under $1000", "cheap"
-    - Duration: "2 weeks", "long weekend", "month-long trip"
-    - Group composition: "family with kids", "solo travel", "couple's trip", "with friends"
-    - Travel style: "adventure", "relaxation", "cultural", "foodie", "party"
-    - Interests: "history", "beaches", "hiking", "museums", "nightlife"
-    - Constraints: "not too cold", "vegetarian-friendly", "accessible for elderly"
-    - Timing: "in December", "next summer", "during cherry blossom season"
-    
-    Returns structured analysis including:
-    - Explicit requirements mentioned by user
-    - Implicit needs inferred from context
-    - Travel constraints to consider
-    - Preferences organized by category
-    
-    This tool helps provide more personalized and relevant recommendations by understanding the full context of complex queries.`,
+    description: `Analyzes user messages to extract travel preferences: budget (luxury/moderate/budget), duration, group type (family/solo/couple), interests, constraints, and timing. Returns structured analysis for personalized recommendations.`,
 
     schema: z.object({
         userMessage: z.string().describe("The user's message to analyze"),
@@ -292,24 +242,7 @@ export const contextAnalysisTool = new DynamicStructuredTool({
  */
 export const currencyTool = new DynamicStructuredTool({
     name: "get_currency_exchange",
-    description: `Fetches real-time currency exchange rates and performs currency conversions.
-    
-    ALWAYS use this tool when the user asks about:
-    - Exchange rates: "what's the exchange rate for USD to EUR?", "how much is a dollar worth?"
-    - Currency conversion: "how much is 100 dollars in yen?", "convert 50 euros to pounds"
-    - Money planning: "how much local currency will I get?", "what's my budget in euros?"
-    - Budget conversion: "I have $500, what's that in yen?", "convert my budget to local currency"
-    - Price comparisons: "is that expensive in local currency?", "how much is that worth?"
-    
-    Returns accurate, real-time exchange data including:
-    - Current exchange rate
-    - Converted amount (if specified)
-    - Last update timestamp
-    - Formatted conversion result
-    
-    Supports all major world currencies: USD, EUR, GBP, JPY, CNY, INR, AUD, CAD, CHF, SEK, NOK, DKK, BRL, MXN, KRW, SGD, HKD, NZD, THB, AED, and more.
-    
-    Important: This tool provides REAL current exchange rates. Always use this for currency questions rather than estimating.`,
+    description: `Fetches real-time currency exchange rates and performs conversions. Returns current rate, converted amount (if specified), and last update time. Supports all major currencies (USD, EUR, GBP, JPY, CNY, etc.). Provides REAL current rates.`,
 
     schema: z.object({
         from: z.string().describe("Source currency code (e.g., 'USD', 'EUR', 'GBP')"),
@@ -389,23 +322,7 @@ export const currencyTool = new DynamicStructuredTool({
  */
 export const hotelTool = new DynamicStructuredTool({
     name: "search_hotels",
-    description: `Provides hotel recommendations, accommodation advice, and lodging information for any city.
-    
-    ALWAYS use this tool when the user asks about:
-    - Hotels: "where to stay in Paris?", "good hotels in Tokyo?"
-    - Accommodation: "best area to stay?", "accommodation in Rome"
-    - Lodging advice: "hostel or hotel?", "budget hotels in London"
-    - Where to sleep: "place to stay in Barcelona", "sleep in Amsterdam"
-    - Budget options: "cheap hotels", "luxury resorts", "mid-range accommodation"
-    
-    Returns comprehensive accommodation information including:
-    - General recommendations for the city
-    - Budget-specific tips (budget/mid-range/luxury)
-    - Best neighborhoods/areas to stay
-    - Practical accommodation advice
-    - Links to booking resources
-    
-    Important: This tool provides REAL recommendations and practical advice. Use it whenever accommodation is mentioned.`,
+    description: `Provides hotel recommendations and accommodation advice for any city. Returns recommendations by budget level, best neighborhoods, and practical lodging tips. Use when users ask about where to stay, hotels, or accommodation.`,
 
     schema: z.object({
         city: z.string().describe("The city to search for hotels/accommodation (e.g., 'Paris', 'Tokyo', 'New York')"),
@@ -487,24 +404,7 @@ export const hotelTool = new DynamicStructuredTool({
  */
 export const flightTool = new DynamicStructuredTool({
     name: "search_flights",
-    description: `Provides flight information, airline recommendations, and booking guidance for travel between cities.
-    
-    ALWAYS use this tool when the user asks about:
-    - Flights: "flights from Paris to Tokyo", "how to fly to London"
-    - Airlines: "which airline flies to...?", "best airline for..."
-    - Travel routes: "how to get from X to Y", "travel from London to Paris"
-    - Flight booking: "when to book flights?", "cheap flights to..."
-    - Airfare advice: "flight prices", "best time to fly"
-    
-    Returns comprehensive flight information including:
-    - Route details and airport codes
-    - Estimated flight duration
-    - Booking site links (Skyscanner, Kayak, Google Flights)
-    - Money-saving tips
-    - Best booking times
-    - Budget flight strategies
-    
-    Important: This tool provides REAL booking guidance and practical tips. Use whenever flights or air travel are mentioned.`,
+    description: `Provides flight information and booking guidance. Returns route details, duration estimates, booking site links, and money-saving tips. Use when users ask about flights, airlines, or air travel between cities.`,
 
     schema: z.object({
         origin: z.string().describe("Origin city (e.g., 'Paris', 'New York', 'London')"),
@@ -583,37 +483,7 @@ export const flightTool = new DynamicStructuredTool({
  */
 export const placesTool = new DynamicStructuredTool({
     name: "search_places",
-    description: `Searches for real places, restaurants, attractions, and activities using Google Maps data via SerpAPI.
-    
-    ALWAYS use this tool when the user asks about:
-    - Restaurants: "where to eat in Paris?", "best restaurants in Tokyo", "Italian food in Rome"
-    - Food: "good food in Bangkok", "local cuisine", "vegetarian restaurants"
-    - Attractions: "what to see in London?", "tourist attractions", "places to visit"
-    - Things to do: "activities in Barcelona", "what to do in NYC", "fun things in Amsterdam"
-    - Specific places: "museums in Paris", "parks in London", "cafes in Vienna"
-    - Entertainment: "bars in Berlin", "nightlife", "live music venues"
-    
-    Returns REAL Google Maps data including:
-    - Place names and exact locations
-    - Real ratings and review counts from Google
-    - Price levels ($ to $$$$)
-    - Categories (Italian, Museum, Park, etc.)
-    - Addresses and phone numbers
-    - Current hours and open/closed status
-    - Direct Google Maps links
-    - Photos/thumbnails
-    
-    Supports search types:
-    - restaurants: Food and dining establishments
-    - attractions: Tourist sites, landmarks, monuments
-    - things_to_do: Activities, tours, experiences
-    - cafes: Coffee shops and cafes
-    - bars: Bars and nightlife
-    - museums: Museums and galleries
-    - parks: Parks and outdoor spaces
-    - shopping: Shopping areas and markets
-    
-    Important: This provides REAL current data from Google Maps. Always use this for place recommendations.`,
+    description: `Searches for restaurants, attractions, and activities using Google Maps data. Returns real place names, ratings, reviews, prices, addresses, hours, and Google Maps links. Supports restaurants, attractions, cafes, bars, museums, parks, shopping. Provides REAL current data.`,
 
     schema: z.object({
         city: z.string().describe("The city to search in (e.g., 'Paris', 'Tokyo', 'New York')"),

@@ -174,6 +174,12 @@ class FlightService {
                 return null;
             }
 
+            // Check for search_information errors (SerpAPI sometimes puts errors here)
+            if (data.search_information?.google_flights_error) {
+                console.error('❌ SerpAPI error:', data.search_information.google_flights_error);
+                return null;
+            }
+
             // Combine best_flights and other_flights
             const allFlights = [
                 ...(data.best_flights || []),

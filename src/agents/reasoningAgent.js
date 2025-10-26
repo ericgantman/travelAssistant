@@ -26,8 +26,6 @@ export class TravelReasoningAgent {
     async initialize() {
         if (this.initialized) return;
 
-        console.log('🤖 Initializing Advanced Reasoning Agent...');
-
         // Initialize Ollama chat model
         this.llm = new ChatOllama({
             baseUrl: config.ollama.baseUrl,
@@ -74,16 +72,31 @@ export class TravelReasoningAgent {
         if (weatherKeywords.some(keyword => messageLower.includes(keyword))) {
             // Extract location - match city names after prepositions
             // Exclude common time/context words that aren't part of location
-            const excludeWords = /\b(today|tomorrow|now|currently|right|this|next|week|month|year|visit|visiting|travel|traveling|go|going)\b/i;
+            // Exclude common words and prepositions from being matched as locations
+            const excludeWords = /\b(today|tomorrow|now|currently|right|this|next|week|month|year|visit|visiting|travel|traveling|go|going|to|from|in|at|for|the|and|or|with)\b/i;
 
-            // Try to find location after preposition
-            let locationMatch = userMessage.match(/\b(?:to|in|for|at)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i);
+            // Try to find location after preposition - improved regex with word boundaries
+            // Match pattern: "to Paris", "in Tokyo", "for Madrid" - but NOT just "to" or "in"
+            let locationMatch = userMessage.match(/\b(?:to|in|for|at)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)*)\b/);
 
-            // If no match with preposition, try to find standalone city names (capitalized)
+            // If no match with capitalized words, try lowercase but filter carefully
             if (!locationMatch) {
-                // Match capitalized words that aren't excluded time words
+                // Match lowercase after preposition: "to london" -> "London"
+                const lowerMatch = userMessage.match(/\b(?:to|in|for|at)\s+([a-z]{3,}(?:\s+[a-z]+)*)\b/i);
+                if (lowerMatch && lowerMatch[1]) {
+                    const candidate = lowerMatch[1].trim();
+                    // Only accept if it's not an excluded word
+                    if (!excludeWords.test(candidate) && candidate.length >= 3) {
+                        locationMatch = lowerMatch;
+                    }
+                }
+            }
+
+            // If still no match, try standalone capitalized city names
+            if (!locationMatch) {
                 const words = userMessage.split(/\s+/);
                 for (const word of words) {
+                    // Match capitalized words (3+ chars) that aren't excluded
                     if (/^[A-Z][a-z]{2,}$/.test(word) && !excludeWords.test(word)) {
                         locationMatch = [null, word];
                         break;
@@ -95,13 +108,14 @@ export class TravelReasoningAgent {
                 // Clean and capitalize location
                 let location = locationMatch[1].trim();
 
-                // Remove time-related words from location
+                // Remove time-related words and prepositions from location
                 location = location.split(/\s+/)
-                    .filter(word => !excludeWords.test(word))
+                    .filter(word => !excludeWords.test(word) && word.length >= 3)
                     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
                     .join(' ');
 
-                if (location) {
+                // Final validation: location must have actual content
+                if (location && location.length >= 3 && !excludeWords.test(location)) {
                     tools.push({
                         name: 'get_weather',
                         args: {
@@ -113,7 +127,7 @@ export class TravelReasoningAgent {
             }
         }
 
-        // Country tool triggers  
+        // Country tool triggers
         const countryKeywords = ['currency', 'money', 'language', 'speak', 'visa', 'capital', 'timezone'];
         if (countryKeywords.some(keyword => messageLower.includes(keyword))) {
             const excludeWords = /\b(today|tomorrow|now|currently|right|this|next|week|month|year|visit|visiting|travel|traveling|go|going)\b/i;
@@ -172,7 +186,6 @@ export class TravelReasoningAgent {
         if (flightKeywords.some(keyword => messageLower.includes(keyword))) {
             const flightDetails = this.extractFlightCities(userMessage);
             if (flightDetails) {
-                console.log(`   → Flight tool: Searching flights from ${flightDetails.origin} to ${flightDetails.destination}`);
                 tools.push({
                     name: 'search_flights',
                     args: {
@@ -324,34 +337,37 @@ export class TravelReasoningAgent {
      */
     extractFlightCities(message) {
         // Pattern: "from X to Y" or "to Y from X"
-        const fromToPattern = /(?:from|flying from|travel from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
-        const toFromPattern = /(?:to|flying to|fly to|travel to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+        // Match 1-3 word location names (case-insensitive), stop at word boundaries
+        // Use negative lookahead to prevent capturing helper words
+        const fromToPattern = /(?:from|flying from|travel from)\s+([a-z]+(?:\s+[a-z]+){0,2}?)\s+to\s+([a-z]+(?:\s+[a-z]+){0,2}?)(?:\s+(?:help|find|search|book|get|show|in|for|during|on)\b|$)/i;
+        const toFromPattern = /(?:to|flying to|fly to|travel to)\s+([a-z]+(?:\s+[a-z]+){0,2}?)\s+from\s+([a-z]+(?:\s+[a-z]+){0,2}?)(?:\s+(?:help|find|search|book|get|show|in|for|during|on)\b|$)/i;
 
         let match = message.match(fromToPattern);
         if (match) {
             return {
-                origin: this.normalizeLocationForFlights(match[1]),
-                destination: this.normalizeLocationForFlights(match[2])
+                origin: this.normalizeLocationForFlights(match[1].trim()),
+                destination: this.normalizeLocationForFlights(match[2].trim())
             };
         }
 
         match = message.match(toFromPattern);
         if (match) {
             return {
-                origin: this.normalizeLocationForFlights(match[2]),
-                destination: this.normalizeLocationForFlights(match[1])
+                origin: this.normalizeLocationForFlights(match[2].trim()),
+                destination: this.normalizeLocationForFlights(match[1].trim())
             };
         }
 
         // Pattern: just "fly to X" - need to infer "from" from context
-        const toPattern = /(?:fly to|flight to|flying to|flights to|travel to|going to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+        // Match city name, stop before helper words or prepositions
+        const toPattern = /(?:fly to|flight to|flying to|flights to|travel to|going to)\s+([a-z]+(?:\s+[a-z]+){0,2}?)(?:\s+(?:help|find|search|book|get|show|in|for|during|on)\b|$)/i;
         match = message.match(toPattern);
         if (match) {
             // Check context for departure location
             const fromContext = this.extractFlightOriginFromContext();
             return {
                 origin: fromContext || 'Tel Aviv', // Default to Tel Aviv
-                destination: this.normalizeLocationForFlights(match[1])
+                destination: this.normalizeLocationForFlights(match[1].trim())
             };
         }
 
@@ -471,7 +487,18 @@ export class TravelReasoningAgent {
         };
 
         const locationLower = location.toLowerCase().trim();
-        return cityMap[locationLower] || location;
+        
+        // If it's a country in our map, return the mapped city
+        if (cityMap[locationLower]) {
+            return cityMap[locationLower];
+        }
+        
+        // Otherwise, capitalize each word (for city names like "new york", "los angeles")
+        return location
+            .trim()
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
     }
 
     /**
@@ -531,7 +558,6 @@ export class TravelReasoningAgent {
                         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
                         .join(' ');
 
-                    console.log(`      Found destination "${location}" in conversation history`);
                     return location;
                 }
             }
@@ -767,13 +793,19 @@ export class TravelReasoningAgent {
                             if (resultMatch) {
                                 const flightData = JSON.parse(resultMatch[1]);
 
-                                // Check if response contains hallucinated prices (e.g., "$230", "$240")
+                                // Check if response contains hallucinated flight details
                                 const responseText = response.content || '';
-                                const hasPricePattern = /\$\d{2,4}(?!\d)/.test(responseText);
-                                const hasSpecificDatePattern = /(?:March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?/.test(responseText);
-                                const hasAirlineNames = /(?:Turkish|Lufthansa|Austrian|Emirates|United|Delta|British Airways|Air France|KLM)\s+Airlines?/i.test(responseText);
 
-                                if (hasPricePattern || hasSpecificDatePattern || hasAirlineNames) {
+                                // More aggressive hallucination detection
+                                const hasPricePattern = /\$\d{2,4}|\₪\d{2,4}|€\d{2,4}|£\d{2,4}/.test(responseText);
+                                const hasSpecificDatePattern = /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?/.test(responseText);
+                                const hasAirlineNames = /(?:Turkish|Lufthansa|Austrian|Emirates|United|Delta|British Airways|Air France|KLM|Qatar|Etihad|Singapore|Cathay|El Al|Ryanair|EasyJet|Southwest)\s+(?:Airlines?|Airways)?/i.test(responseText);
+                                const hasFlightNumbers = /\b(?:[A-Z]{2}|[0-9A-Z]{2})\s*\d{3,4}\b/.test(responseText);
+                                const hasSpecificPriceRange = /\$\d+\s*-\s*\$\d+|₪\d+\s*-\s*₪\d+|€\d+\s*-\s*€\d+/.test(responseText);
+                                const hasInventedTimes = /\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)/.test(responseText);
+
+                                if (hasPricePattern || hasSpecificDatePattern || hasAirlineNames || hasFlightNumbers || hasSpecificPriceRange || hasInventedTimes) {
+                                    console.warn(`⚠️  HALLUCINATION DETECTED: Invented flight details (prices, dates, airlines, or times)`);
                                     messages.push(new SystemMessage(
                                         `🚨 HALLUCINATION DETECTED! You invented flight details.\n\n` +
                                         `CORRECT RESPONSE FORMAT:\n` +
@@ -886,7 +918,6 @@ export class TravelReasoningAgent {
      */
     async clearHistory() {
         this.chatHistory = [];
-        console.log('🔄 Agent memory cleared');
     }
 
     /**
