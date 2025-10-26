@@ -24,7 +24,6 @@ class CurrencyService {
         // Check cache
         const cached = this.cache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
-            console.log(`💰 Using cached exchange rate: ${from} → ${to}`);
             return cached.data;
         }
 
@@ -61,7 +60,6 @@ class CurrencyService {
                 timestamp: Date.now()
             });
 
-            console.log(`💱 Fetched exchange rate: 1 ${from} = ${rate} ${to}`);
             return result;
 
         } catch (error) {

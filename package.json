@@ -13,6 +13,7 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
+        "@googlemaps/google-maps-services-js": "^3.4.2",
         "@langchain/community": "^0.3.57",
         "@langchain/core": "^0.3.78",
         "axios": "^1.6.0",

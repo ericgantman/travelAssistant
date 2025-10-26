@@ -29,43 +29,39 @@ describe('FlightService', () => {
         });
     });
 
-    describe('estimateFlightDuration', () => {
-        it('should estimate short-haul flights (< 3 hours)', () => {
-            const duration = flightService.estimateFlightDuration('London', 'Paris');
-            assert.ok(duration.includes('1-3 hours') || duration.includes('short'));
+    describe('getRouteType', () => {
+        it('should identify short-haul routes', () => {
+            const routeType = flightService.getRouteType('London', 'Paris');
+            assert.ok(['short_haul', 'medium_haul'].includes(routeType));
         });
 
-        it('should estimate long-haul flights', () => {
-            const duration = flightService.estimateFlightDuration('London', 'Tokyo');
-            assert.ok(duration.includes('10') || duration.includes('long'));
+        it('should identify long-haul routes', () => {
+            const routeType = flightService.getRouteType('London', 'Tokyo');
+            assert.strictEqual(routeType, 'long_haul');
         });
 
-        it('should return estimate even for unknown cities', () => {
-            const duration = flightService.estimateFlightDuration('UnknownCity1', 'UnknownCity2');
-            assert.ok(typeof duration === 'string');
-            assert.ok(duration.length > 0);
-        });
-
-        it('should be consistent for same city pair', () => {
-            const duration1 = flightService.estimateFlightDuration('Paris', 'Tokyo');
-            const duration2 = flightService.estimateFlightDuration('Paris', 'Tokyo');
-            assert.strictEqual(duration1, duration2);
+        it('should handle unknown cities', () => {
+            const routeType = flightService.getRouteType('UnknownCity1', 'UnknownCity2');
+            assert.ok(['short_haul', 'medium_haul', 'long_haul'].includes(routeType));
         });
     });
 
-    describe('generateSearchUrls', () => {
-        it('should generate search URLs', () => {
-            const urls = flightService.generateSearchUrls('LHR', 'CDG');
-            assert.ok(urls.skyscanner);
-            assert.ok(urls.kayak);
-            assert.ok(urls.googleFlights);
+    describe('getRealisticAirlines', () => {
+        it('should return array of airlines', () => {
+            const airlines = flightService.getRealisticAirlines('London', 'Paris');
+            assert.ok(Array.isArray(airlines));
+            assert.ok(airlines.length > 0);
+            assert.ok(airlines.every(a => typeof a === 'string'));
         });
 
-        it('should generate valid URLs', () => {
-            const urls = flightService.generateSearchUrls('JFK', 'NRT');
-            assert.ok(urls.skyscanner.startsWith('http'));
-            assert.ok(urls.kayak.startsWith('http'));
-            assert.ok(urls.googleFlights.startsWith('http'));
+        it('should return European airlines for European routes', () => {
+            const airlines = flightService.getRealisticAirlines('London', 'Paris');
+            assert.ok(airlines.some(a => ['Lufthansa', 'Air France', 'KLM', 'British Airways'].includes(a)));
+        });
+
+        it('should return appropriate airlines for different routes', () => {
+            const airlines = flightService.getRealisticAirlines('New York', 'Los Angeles');
+            assert.ok(airlines.length > 0);
         });
     });
 
@@ -125,21 +121,22 @@ describe('FlightService', () => {
         it('should get flight info for valid cities', async () => {
             const data = await flightService.getFlightInfo('London', 'Paris');
             assert.ok(data);
-            assert.ok(data.route);
-            assert.ok(data.estimatedDuration);
-            assert.ok(data.bookingSites || data.searchUrls);
+            assert.ok(data.success);
+            assert.ok(data.flights);
+            assert.ok(Array.isArray(data.flights));
+            assert.ok(data.flights.length > 0);
         });
 
         it('should include airport codes in route', async () => {
             const data = await flightService.getFlightInfo('London', 'Paris');
-            assert.ok(data.route.includes('LHR'));
-            assert.ok(data.route.includes('CDG'));
+            assert.ok(data.originCode === 'LHR');
+            assert.ok(data.destCode === 'CDG');
         });
 
         it('should generate booking sites/links', async () => {
             const data = await flightService.getFlightInfo('Tokyo', 'New York');
-            const links = data.bookingSites || data.searchUrls || {};
-            assert.ok(links.skyscanner || Object.keys(links).length > 0);
+            assert.ok(data.success);
+            assert.ok(data.flights[0].bookingUrl);
         });
 
         it('should cache flight data', async () => {
@@ -151,20 +148,43 @@ describe('FlightService', () => {
 
             assert.ok(data1);
             assert.ok(data2);
-            assert.strictEqual(data1.route, data2.route);
+            assert.strictEqual(data1.from, data2.from);
+            assert.strictEqual(data1.to, data2.to);
         });
 
         it('should handle unknown cities gracefully', async () => {
             const data = await flightService.getFlightInfo('UnknownCity1', 'UnknownCity2');
             assert.ok(data);
-            assert.ok(data.route);
-            assert.ok(data.estimatedDuration);
+            assert.ok(data.success);
+            assert.ok(data.flights && data.flights.length > 0);
+        });
+
+        it('should include price information', async () => {
+            const data = await flightService.getFlightInfo('London', 'Paris');
+            assert.ok(data.success);
+            assert.ok(data.flights[0].price);
+            assert.ok(data.flights[0].price.amount);
+            assert.ok(data.flights[0].price.display);
+        });
+
+        it('should include flight dates and times', async () => {
+            const data = await flightService.getFlightInfo('London', 'Paris');
+            assert.ok(data.flights[0].departure.date);
+            assert.ok(data.flights[0].departure.timeDisplay);
+            assert.ok(data.flights[0].arrival.date);
+            assert.ok(data.flights[0].arrival.timeDisplay);
+        });
+
+        it('should include airline information', async () => {
+            const data = await flightService.getFlightInfo('London', 'Paris');
+            assert.ok(data.flights[0].airline);
+            assert.ok(data.flights[0].flightNumber);
         });
     });
 
-    describe('getBudgetFlightTips', () => {
-        it('should return array of budget tips', () => {
-            const tips = flightService.getBudgetFlightTips();
+    describe('get Flight Tips', () => {
+        it('should return array of helpful tips', () => {
+            const tips = flightService.getFlightTips('London', 'Paris', {});
             assert.ok(Array.isArray(tips));
             assert.ok(tips.length > 0);
             assert.ok(tips.every(tip => typeof tip === 'string'));

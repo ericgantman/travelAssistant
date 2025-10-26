@@ -10,6 +10,7 @@ import { countryService } from '../services/country.js';
 import { currencyService } from '../services/currency.js';
 import { hotelService } from '../services/hotels.js';
 import { flightService } from '../services/flights.js';
+import { placesService } from '../services/places.js';
 
 /**
  * Weather Information Tool
@@ -413,10 +414,12 @@ export const hotelTool = new DynamicStructuredTool({
 
     func: async ({ city, budgetLevel }) => {
         try {
-            // Get hotel recommendations
-            const hotelInfo = await hotelService.getHotelRecommendations(city);
+            // Get hotel recommendations with real data (prices, ratings, availability)
+            const hotelData = await hotelService.getHotelRecommendations(city, {
+                budgetLevel
+            });
 
-            if (!hotelInfo) {
+            if (!hotelData || !hotelData.success) {
                 return JSON.stringify({
                     success: false,
                     error: `Could not fetch hotel information for ${city}. City name may be incorrect or data unavailable.`,
@@ -424,39 +427,48 @@ export const hotelTool = new DynamicStructuredTool({
                 });
             }
 
-            // Get budget-specific suggestions if requested
-            const budgetInfo = budgetLevel ?
-                hotelService.getBudgetSuggestions(budgetLevel) : null;
+            // Filter by budget level if specified
+            let hotels = hotelData.hotels;
+            if (budgetLevel && budgetLevel !== 'all') {
+                hotels = hotels.filter(h => h.category === budgetLevel);
+            }
 
+            // Return structured hotel data with all details
             return JSON.stringify({
                 success: true,
-                city: hotelInfo.city,
-                recommendations: hotelInfo.recommendations,
-                bestAreas: hotelInfo.areas.length > 0 ? hotelInfo.areas : ['Central/Downtown area for easy access'],
-                generalInfo: hotelInfo.generalInfo || `${city} offers various accommodation options for all budgets`,
-                budgetAdvice: budgetInfo ? {
-                    level: budgetLevel,
-                    priceRange: budgetInfo.range,
-                    types: budgetInfo.types,
-                    tips: budgetInfo.tips
-                } : {
-                    general: [
-                        'Budget (hostels/budget hotels): $20-50/night',
-                        'Mid-range (3-star hotels): $50-150/night',
-                        'Luxury (4-5 star): $150+/night'
-                    ]
-                },
-                bookingTips: [
-                    'Book in advance for better rates',
-                    'Check multiple booking sites (Booking.com, Hotels.com, Airbnb)',
-                    'Read recent reviews from multiple sources',
-                    'Consider location vs. price tradeoffs',
-                    'Look for free cancellation options'
-                ],
-                practical_advice: {
-                    timing: 'Book 1-3 months in advance for best availability',
-                    location: 'Stay near public transport for easy city access',
-                    safety: 'Choose well-reviewed properties in safe neighborhoods'
+                city: hotelData.city,
+                totalHotels: hotels.length,
+                hotels: hotels.map(hotel => ({
+                    name: hotel.name,
+                    category: hotel.category,
+                    rating: {
+                        score: hotel.rating,
+                        reviews: hotel.reviewCount,
+                        display: `${hotel.rating}/10 (${hotel.reviewCount} reviews)`
+                    },
+                    price: {
+                        amount: hotel.price.amount,
+                        display: hotel.price.display,
+                        perNight: hotel.price.perNight
+                    },
+                    location: {
+                        neighborhood: hotel.location.neighborhood,
+                        distanceFromCenter: hotel.location.distanceFromCenter,
+                        walkScore: hotel.location.walkScore
+                    },
+                    availability: {
+                        available: hotel.availability.available,
+                        roomsLeft: hotel.availability.roomsLeft,
+                        message: hotel.availability.message
+                    },
+                    amenities: hotel.amenities,
+                    highlights: hotel.highlights
+                })),
+                tips: hotelService.getBookingTips(city),
+                priceCategories: {
+                    luxury: '$250-450/night (ratings 8.5-9.8)',
+                    'mid-range': '$100-200/night (ratings 7.5-8.8)',
+                    budget: '$40-100/night (ratings 6.5-8.0)'
                 }
             });
         } catch (error) {
@@ -502,10 +514,10 @@ export const flightTool = new DynamicStructuredTool({
 
     func: async ({ origin, destination, departDate }) => {
         try {
-            // Get flight information
+            // Get flight information with REAL DATA
             const flightInfo = await flightService.getFlightInfo(origin, destination, { departDate });
 
-            if (!flightInfo) {
+            if (!flightInfo || !flightInfo.success) {
                 return JSON.stringify({
                     success: false,
                     error: `Could not fetch flight information for ${origin} to ${destination}.`,
@@ -513,25 +525,46 @@ export const flightTool = new DynamicStructuredTool({
                 });
             }
 
+            // NEW FORMAT: Return actual flight data with prices, dates, airlines
             return JSON.stringify({
                 success: true,
-                route: flightInfo.route,
-                duration: flightInfo.estimatedDuration,
-                bookingLinks: {
-                    skyscanner: flightInfo.bookingSites.skyscanner,
-                    kayak: flightInfo.bookingSites.kayak,
-                    googleFlights: flightInfo.bookingSites.googleFlights,
-                    note: 'Click these links to compare prices across airlines'
-                },
-                bookingTips: flightInfo.tips,
-                bestTimeToBook: flightInfo.bestTimeToBook,
-                budgetSavingTips: flightInfo.budgetTips,
-                generalAdvice: flightInfo.generalAdvice,
-                practical_info: {
-                    cheapest_days: 'Tuesday and Wednesday usually have lowest fares',
-                    booking_window: 'Book 2-3 months ahead for international flights',
-                    price_tracking: 'Use incognito mode to avoid price inflation',
-                    flexibility: 'Being flexible with dates can save 20-40%'
+                from: flightInfo.from,
+                to: flightInfo.to,
+                route: `${flightInfo.from} (${flightInfo.originCode}) → ${flightInfo.to} (${flightInfo.destCode})`,
+                dataSource: flightInfo.dataSource, // 'live' or 'sample'
+                note: flightInfo.note,
+
+                // ACTUAL FLIGHT OPTIONS with prices and dates!
+                flights: flightInfo.flights.map(flight => ({
+                    airline: flight.airline,
+                    flightNumber: flight.flightNumber,
+                    price: flight.price.display,
+                    priceAmount: flight.price.amount,
+                    currency: flight.price.currency,
+                    departure: {
+                        date: flight.departure.date,
+                        time: flight.departure.timeDisplay,
+                        airport: flight.departure.airport
+                    },
+                    arrival: {
+                        date: flight.arrival.date,
+                        time: flight.arrival.timeDisplay,
+                        airport: flight.arrival.airport
+                    },
+                    duration: flight.duration,
+                    stops: flight.stopsInfo,
+                    bookingUrl: flight.bookingUrl
+                })),
+
+                // Helpful tips
+                tips: flightInfo.tips,
+
+                // Quick summary
+                summary: {
+                    cheapestPrice: `$${flightInfo.flights[0].price.amount}`,
+                    cheapestFlight: `${flightInfo.flights[0].airline} ${flightInfo.flights[0].flightNumber}`,
+                    averagePrice: `$${Math.round(flightInfo.flights.reduce((sum, f) => sum + f.price.amount, 0) / flightInfo.flights.length)}`,
+                    totalOptions: flightInfo.flights.length
                 }
             });
         } catch (error) {
@@ -539,6 +572,130 @@ export const flightTool = new DynamicStructuredTool({
                 success: false,
                 error: error.message,
                 suggestion: "Continue with general flight advice."
+            });
+        }
+    }
+});
+
+/**
+ * Places & Attractions Tool
+ * Searches for restaurants, attractions, and things to do using real Google Maps data
+ */
+export const placesTool = new DynamicStructuredTool({
+    name: "search_places",
+    description: `Searches for real places, restaurants, attractions, and activities using Google Maps data via SerpAPI.
+    
+    ALWAYS use this tool when the user asks about:
+    - Restaurants: "where to eat in Paris?", "best restaurants in Tokyo", "Italian food in Rome"
+    - Food: "good food in Bangkok", "local cuisine", "vegetarian restaurants"
+    - Attractions: "what to see in London?", "tourist attractions", "places to visit"
+    - Things to do: "activities in Barcelona", "what to do in NYC", "fun things in Amsterdam"
+    - Specific places: "museums in Paris", "parks in London", "cafes in Vienna"
+    - Entertainment: "bars in Berlin", "nightlife", "live music venues"
+    
+    Returns REAL Google Maps data including:
+    - Place names and exact locations
+    - Real ratings and review counts from Google
+    - Price levels ($ to $$$$)
+    - Categories (Italian, Museum, Park, etc.)
+    - Addresses and phone numbers
+    - Current hours and open/closed status
+    - Direct Google Maps links
+    - Photos/thumbnails
+    
+    Supports search types:
+    - restaurants: Food and dining establishments
+    - attractions: Tourist sites, landmarks, monuments
+    - things_to_do: Activities, tours, experiences
+    - cafes: Coffee shops and cafes
+    - bars: Bars and nightlife
+    - museums: Museums and galleries
+    - parks: Parks and outdoor spaces
+    - shopping: Shopping areas and markets
+    
+    Important: This provides REAL current data from Google Maps. Always use this for place recommendations.`,
+
+    schema: z.object({
+        city: z.string().describe("The city to search in (e.g., 'Paris', 'Tokyo', 'New York')"),
+        searchType: z.enum([
+            'restaurants',
+            'attractions',
+            'things_to_do',
+            'cafes',
+            'bars',
+            'museums',
+            'parks',
+            'shopping'
+        ]).describe("Type of places to search for"),
+        specificQuery: z.string().optional().describe("Optional specific search like 'Italian restaurants' or 'modern art museums'")
+    }),
+
+    func: async ({ city, searchType, specificQuery }) => {
+        try {
+            // Search for places with real Google Maps data
+            const placesData = await placesService.searchPlaces(city, {
+                type: searchType,
+                query: specificQuery,
+                maxResults: 10
+            });
+
+            if (!placesData || !placesData.success) {
+                return JSON.stringify({
+                    success: false,
+                    error: `Could not fetch places data for ${city}.`,
+                    suggestion: "Provide general recommendations for this city."
+                });
+            }
+
+            // Return structured places data
+            return JSON.stringify({
+                success: true,
+                city: placesData.city,
+                searchType: placesData.searchType,
+                dataSource: placesData.dataSource, // 'live' or 'sample'
+                totalResults: placesData.totalResults,
+                note: placesData.note,
+
+                // Real places with all details
+                places: placesData.places.map(place => ({
+                    rank: place.rank,
+                    name: place.name,
+                    rating: {
+                        score: place.rating.score,
+                        reviews: place.rating.reviews,
+                        display: place.rating.display
+                    },
+                    priceLevel: place.priceLevel,
+                    category: place.category,
+                    description: place.description,
+                    address: place.address,
+                    location: place.location,
+                    contact: {
+                        phone: place.phone,
+                        website: place.website
+                    },
+                    hours: place.hours,
+                    isOpen: place.isOpen,
+                    mapsUrl: place.mapsUrl,
+                    thumbnail: place.thumbnail
+                })),
+
+                // Helpful tips
+                tips: placesData.tips,
+
+                // Quick summary
+                summary: {
+                    topRated: placesData.places[0]?.name,
+                    topRating: placesData.places[0]?.rating.score,
+                    averageRating: (placesData.places.reduce((sum, p) => sum + p.rating.score, 0) / placesData.places.length).toFixed(1),
+                    totalOptions: placesData.totalResults
+                }
+            });
+        } catch (error) {
+            return JSON.stringify({
+                success: false,
+                error: error.message,
+                suggestion: "Continue with general recommendations."
             });
         }
     }
@@ -553,5 +710,6 @@ export const travelTools = [
     contextAnalysisTool,
     currencyTool,
     hotelTool,
-    flightTool
+    flightTool,
+    placesTool
 ];

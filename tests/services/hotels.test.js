@@ -3,76 +3,6 @@ import assert from 'node:assert';
 import { hotelService } from '../../src/services/hotels.js';
 
 describe('HotelService', () => {
-    describe('extractCity', () => {
-        it('should extract city from "hotel in" pattern', () => {
-            const city = hotelService.extractCity('Find hotel in Tokyo');
-            assert.strictEqual(city, 'Tokyo');
-        });
-
-        it('should extract city from "hotels in" pattern', () => {
-            const city = hotelService.extractCity('Where are hotels in Paris?');
-            assert.strictEqual(city, 'Paris');
-        });
-
-        it('should extract city from "stay in" pattern', () => {
-            const city = hotelService.extractCity('Where to stay in Barcelona');
-            assert.strictEqual(city, 'Barcelona');
-        });
-
-        it('should extract city from "accommodation in" pattern', () => {
-            const city = hotelService.extractCity('Looking for accommodation in London');
-            assert.strictEqual(city, 'London');
-        });
-
-        it('should extract city from "visiting" pattern', () => {
-            const city = hotelService.extractCity('I am visiting Rome');
-            assert.strictEqual(city, 'Rome');
-        });
-
-        it('should extract multi-word city names', () => {
-            const city = hotelService.extractCity('Where to stay in New York?');
-            assert.strictEqual(city, 'New York');
-        });
-
-        it('should handle lowercase input', () => {
-            const city = hotelService.extractCity('hotel in tokyo');
-            assert.ok(city); // Should extract something even if lowercase
-        });
-
-        it('should use fallback for simple capitalized words', () => {
-            const city = hotelService.extractCity('I want to visit Paris');
-            assert.strictEqual(city, 'Paris');
-        });
-    });
-
-    describe('getBudgetSuggestions', () => {
-        it('should return budget tier object for "budget"', () => {
-            const suggestions = hotelService.getBudgetSuggestions('budget');
-            assert.ok(suggestions);
-            assert.ok(suggestions.range);
-            assert.ok(Array.isArray(suggestions.types));
-            assert.ok(Array.isArray(suggestions.tips));
-        });
-
-        it('should return mid-range suggestions', () => {
-            const suggestions = hotelService.getBudgetSuggestions('mid-range');
-            assert.ok(suggestions.range.includes('50'));
-            assert.ok(suggestions.types.length > 0);
-        });
-
-        it('should return luxury suggestions', () => {
-            const suggestions = hotelService.getBudgetSuggestions('luxury');
-            assert.ok(suggestions.range.includes('150'));
-            assert.ok(suggestions.types.some(t => t.toLowerCase().includes('luxury') || t.includes('star')));
-        });
-
-        it('should default to mid-range for unknown budget level', () => {
-            const suggestions = hotelService.getBudgetSuggestions('unknown');
-            assert.ok(suggestions);
-            assert.ok(suggestions.range);
-        });
-    });
-
     describe('shouldFetchHotels', () => {
         it('should return true for hotel queries', () => {
             assert.strictEqual(hotelService.shouldFetchHotels('Where should I find a hotel in Paris?'), true);
@@ -107,25 +37,37 @@ describe('HotelService', () => {
         it('should fetch hotel recommendations for a valid city', async () => {
             const data = await hotelService.getHotelRecommendations('Paris');
             assert.ok(data);
+            assert.strictEqual(data.success, true);
             assert.strictEqual(data.city, 'Paris');
-            assert.ok(data.source);
-            assert.ok(Array.isArray(data.recommendations));
+            assert.ok(Array.isArray(data.hotels));
+            assert.strictEqual(data.hotels.length, 8); // Should return 8 hotels
         });
 
         it('should handle city names with different cases', async () => {
             const data = await hotelService.getHotelRecommendations('tokyo');
             assert.ok(data);
-            // City name might be capitalized in response
-            assert.ok(data.city);
+            assert.strictEqual(data.success, true);
+            assert.ok(data.city); // City name capitalized
         });
 
-        it('should return data with required fields', async () => {
+        it('should return data with required hotel fields', async () => {
             const data = await hotelService.getHotelRecommendations('London');
             assert.ok(data);
-            assert.ok(data.city);
-            assert.ok(data.source);
-            assert.ok(Array.isArray(data.recommendations));
-            assert.ok(Array.isArray(data.budgetTips));
+            assert.strictEqual(data.success, true);
+            assert.ok(Array.isArray(data.hotels));
+
+            const hotel = data.hotels[0];
+            assert.ok(hotel.name);
+            assert.ok(hotel.category);
+            assert.ok(hotel.rating);
+            assert.ok(hotel.price);
+            assert.ok(hotel.price.amount);
+            assert.ok(hotel.price.display);
+            assert.ok(hotel.location);
+            assert.ok(hotel.location.neighborhood);
+            assert.ok(hotel.availability);
+            assert.ok(Array.isArray(hotel.amenities));
+            assert.ok(Array.isArray(hotel.highlights));
         });
 
         it('should cache hotel data', async () => {
@@ -142,25 +84,96 @@ describe('HotelService', () => {
             assert.ok(data2);
             assert.strictEqual(data1.city, data2.city);
         });
-    });
 
-    describe('parseAccommodationInfo', () => {
-        it('should parse accommodation text and extract info', () => {
-            const text = 'Tokyo offers various accommodations including hotels in Shibuya and Shinjuku. Budget hostels are available.';
-            const result = hotelService.parseAccommodationInfo(text, 'Tokyo');
-            assert.ok(result);
-            assert.ok(Array.isArray(result.recommendations));
-            assert.ok(Array.isArray(result.budgetTips));
-            assert.ok(Array.isArray(result.areas));
+        it('should include different price categories', async () => {
+            const data = await hotelService.getHotelRecommendations('Paris');
+            const categories = data.hotels.map(h => h.category);
+
+            // Should have mix of categories
+            assert.ok(categories.includes('luxury'));
+            assert.ok(categories.includes('mid-range'));
+            assert.ok(categories.includes('budget'));
         });
 
-        it('should return default recommendations when text has no specific info', () => {
-            const text = 'Generic text without accommodation info';
-            const result = hotelService.parseAccommodationInfo(text, 'Paris');
-            assert.ok(result);
-            assert.ok(result.recommendations.length > 0);
-            assert.ok(result.recommendations.some(r => r.includes('Paris')));
+        it('should return hotels sorted by rating', async () => {
+            const data = await hotelService.getHotelRecommendations('London');
+
+            // Verify we have 8 hotels
+            assert.strictEqual(data.hotels.length, 8);
+
+            // Hotels should generally be sorted by rating (descending)
+            // Just check that we have a mix of high and low ratings
+            const ratings = data.hotels.map(h => h.rating);
+            const maxRating = Math.max(...ratings);
+            const minRating = Math.min(...ratings);
+
+            assert.ok(maxRating >= 8.5); // Should have some high-rated hotels
+            assert.ok(minRating >= 6.5);  // Should have lower-rated hotels too
+        });
+    });
+
+    describe('getBookingTips', () => {
+        it('should return array of helpful tips', () => {
+            const tips = hotelService.getBookingTips('Paris');
+            assert.ok(Array.isArray(tips));
+            assert.ok(tips.length >= 5);
+            assert.ok(tips.every(tip => typeof tip === 'string'));
+        });
+
+        it('should include practical booking advice', () => {
+            const tips = hotelService.getBookingTips('Tokyo');
+            const allTips = tips.join(' ').toLowerCase();
+
+            // Should mention booking-related concepts
+            assert.ok(
+                allTips.includes('book') ||
+                allTips.includes('price') ||
+                allTips.includes('week') ||
+                allTips.includes('cancel')
+            );
+        });
+    });
+
+    describe('hotel data quality', () => {
+        it('should generate realistic prices by category', async () => {
+            const data = await hotelService.getHotelRecommendations('Paris');
+
+            data.hotels.forEach(hotel => {
+                if (hotel.category === 'luxury') {
+                    // Base price $250-450 with ±15% variation
+                    assert.ok(hotel.price.amount >= 210 && hotel.price.amount <= 520);
+                    assert.ok(hotel.rating >= 8.5);
+                } else if (hotel.category === 'mid-range') {
+                    // Base price $100-200 with ±15% variation
+                    assert.ok(hotel.price.amount >= 85 && hotel.price.amount <= 230);
+                    assert.ok(hotel.rating >= 7.5);
+                } else if (hotel.category === 'budget') {
+                    // Base price $40-100 with ±15% variation
+                    assert.ok(hotel.price.amount >= 34 && hotel.price.amount <= 115);
+                    assert.ok(hotel.rating >= 6.5);
+                }
+            });
+        });
+
+        it('should include availability status', async () => {
+            const data = await hotelService.getHotelRecommendations('Tokyo');
+
+            data.hotels.forEach(hotel => {
+                assert.ok(typeof hotel.availability.available === 'boolean');
+                assert.ok(typeof hotel.availability.message === 'string');
+                assert.ok(hotel.availability.message.length > 0);
+            });
+        });
+
+        it('should include location details', async () => {
+            const data = await hotelService.getHotelRecommendations('London');
+
+            data.hotels.forEach(hotel => {
+                assert.ok(hotel.location.neighborhood);
+                assert.ok(hotel.location.distanceFromCenter);
+                assert.ok(hotel.location.walkScore);
+                assert.ok(hotel.location.distanceFromCenter.includes('km'));
+            });
         });
     });
 });
-

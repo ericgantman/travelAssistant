@@ -1,198 +1,492 @@
 /**
  * Hotel Search Service
- * Uses OpenTripMap API (free tier, requires API key but free registration)
- * Alternative: For a completely free option without registration, we'll use
- * a combination of Wikivoyage for recommendations
- * https://www.opentripmap.com/
+ * Uses SerpAPI (Google Hotels) for real hotel data
+ * Falls back to realistic sample data if API unavailable
  */
 
-const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
+import axios from 'axios';
 
 class HotelService {
     constructor() {
         this.cache = new Map();
+        // Extended cache: 24 hours to conserve API quota
         this.cacheExpiry = 86400000; // 24 hours
-    }
 
-    /**
-     * Get hotel recommendations for a city
-     * @param {string} city - City name
-     * @returns {Promise<Object>} Hotel recommendations
-     */
-    async getHotelRecommendations(city) {
-        const cacheKey = `hotels_${city.toLowerCase()}`;
+        // Development mode: set to true to skip API and use fallback
+        this.devMode = process.env.HOTELS_DEV_MODE === 'true' || process.env.FLIGHT_DEV_MODE === 'true';
 
-        // Check cache
-        const cached = this.cache.get(cacheKey);
-        if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
-            console.log(`🏨 Using cached hotel data for: ${city}`);
-            return cached.data;
-        }
+        // SerpAPI for Google Hotels (same key as flights and places!)
+        // Sign up at: https://serpapi.com/
+        this.apiKey = process.env.SERPAPI_KEY || null;
+        this.apiBaseUrl = 'https://serpapi.com/search.json';
 
-        try {
-            // Search for the city page on Wikivoyage
-            const searchUrl = `${WIKIVOYAGE_API}?action=query&list=search&srsearch=${encodeURIComponent(city)}&format=json`;
-            const searchResponse = await fetch(searchUrl);
+        // Hotel name templates by city type
+        this.hotelTemplates = {
+            european: ['Grand Hotel', 'Plaza Hotel', 'Royal Hotel', 'Palace Hotel', 'Central Hotel', 'Crown Hotel', 'Imperial Hotel', 'Majestic Hotel'],
+            modern: ['City Inn', 'Metro Hotel', 'Urban Stay', 'Sky Hotel', 'Modern Suites', 'Downtown Hotel'],
+            budget: ['Budget Inn', 'Economy Hotel', 'Smart Stay', 'Quick Hotel', 'Value Lodge'],
+            boutique: ['Boutique Hotel', 'Art Hotel', 'Design Hotel', 'Signature Hotel', 'Heritage Hotel']
+        };
 
-            if (!searchResponse.ok) {
-                throw new Error(`Wikivoyage API error: ${searchResponse.status}`);
-            }
-
-            const searchData = await searchResponse.json();
-
-            if (!searchData.query?.search?.[0]) {
-                return null;
-            }
-
-            const pageTitle = searchData.query.search[0].title;
-
-            // Get the page content
-            const contentUrl = `${WIKIVOYAGE_API}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=extracts&exintro=true&explaintext=true&format=json`;
-            const contentResponse = await fetch(contentUrl);
-
-            if (!contentResponse.ok) {
-                throw new Error(`Wikivoyage API error: ${contentResponse.status}`);
-            }
-
-            const contentData = await contentResponse.json();
-
-            const pages = contentData.query?.pages;
-            if (!pages) {
-                return null;
-            }
-
-            const pageId = Object.keys(pages)[0];
-            const extract = pages[pageId]?.extract || '';
-
-            // Extract accommodation information
-            const accommodationInfo = this.parseAccommodationInfo(extract, city);
-
-            const result = {
-                city: city,
-                source: 'Wikivoyage',
-                recommendations: accommodationInfo.recommendations,
-                budgetTips: accommodationInfo.budgetTips,
-                areas: accommodationInfo.areas,
-                generalInfo: accommodationInfo.generalInfo
-            };
-
-            // Cache the result
-            this.cache.set(cacheKey, {
-                data: result,
-                timestamp: Date.now()
-            });
-
-            console.log(`🏨 Fetched hotel recommendations for: ${city}`);
-            return result;
-
-        } catch (error) {
-            console.error(`❌ Hotel search error:`, error.message);
-            return null;
-        }
-    }
-
-    /**
-     * Parse accommodation information from Wikivoyage text
-     * @param {string} text - Wikivoyage page text
-     * @param {string} city - City name
-     * @returns {Object} Parsed accommodation info
-     */
-    parseAccommodationInfo(text, city) {
-        const recommendations = [];
-        const budgetTips = [];
-        const areas = [];
-        let generalInfo = '';
-
-        // Look for accommodation-related keywords
-        const accommodationKeywords = [
-            'hotel', 'hostel', 'accommodation', 'lodging', 'stay',
-            'guesthouse', 'resort', 'inn', 'motel', 'apartment'
-        ];
-
-        const budgetKeywords = [
-            'budget', 'cheap', 'affordable', 'inexpensive', 'hostel',
-            'mid-range', 'luxury', 'expensive', 'upscale'
-        ];
-
-        const textLower = text.toLowerCase();
-
-        // Extract general accommodation info
-        if (textLower.includes('sleep') || textLower.includes('stay')) {
-            const sleepSection = text.substring(
-                Math.max(0, textLower.indexOf('sleep') - 100),
-                Math.min(text.length, textLower.indexOf('sleep') + 300)
-            );
-            generalInfo = sleepSection.trim();
-        }
-
-        // Check for budget information
-        budgetKeywords.forEach(keyword => {
-            if (textLower.includes(keyword)) {
-                const contextStart = Math.max(0, textLower.indexOf(keyword) - 50);
-                const contextEnd = Math.min(text.length, textLower.indexOf(keyword) + 150);
-                const context = text.substring(contextStart, contextEnd).trim();
-
-                if (context && !budgetTips.includes(context)) {
-                    budgetTips.push(context);
-                }
-            }
-        });
-
-        // Extract neighborhood/area information
-        const neighborhoodPatterns = [
-            /in (?:the )?([A-Z][a-z]+(?: [A-Z][a-z]+)*) (?:district|area|neighborhood|quarter)/g,
-            /([A-Z][a-z]+(?: [A-Z][a-z]+)*) is (?:a )?(?:good|great|popular) (?:area|place) to stay/g
-        ];
-
-        neighborhoodPatterns.forEach(pattern => {
-            let match;
-            while ((match = pattern.exec(text)) !== null) {
-                if (match[1] && !areas.includes(match[1])) {
-                    areas.push(match[1]);
-                }
-            }
-        });
-
-        // Default recommendations if we can't extract specific info
-        if (recommendations.length === 0) {
-            recommendations.push(`Check popular booking sites for ${city} accommodations`);
-            recommendations.push(`Look for hotels in central/downtown ${city} for easy access to attractions`);
-            recommendations.push(`Consider hostels or guesthouses for budget-friendly options`);
-        }
-
-        return {
-            recommendations: recommendations.slice(0, 5),
-            budgetTips: budgetTips.slice(0, 3),
-            areas: areas.slice(0, 5),
-            generalInfo: generalInfo.substring(0, 200)
+        // Neighborhood templates
+        this.neighborhoodsByCity = {
+            'paris': ['Le Marais', 'Latin Quarter', 'Montmartre', 'Saint-Germain', 'Champs-Élysées', 'Bastille'],
+            'london': ['Covent Garden', 'Soho', 'Kensington', 'Westminster', 'Shoreditch', 'Camden'],
+            'tokyo': ['Shibuya', 'Shinjuku', 'Ginza', 'Asakusa', 'Roppongi', 'Harajuku'],
+            'new york': ['Manhattan', 'Brooklyn', 'Queens', 'Times Square', 'Upper East Side'],
+            'rome': ['Trastevere', 'Centro Storico', 'Monti', 'Prati', 'Testaccio'],
+            'barcelona': ['Gothic Quarter', 'Eixample', 'Gràcia', 'El Born', 'Barceloneta'],
+            'amsterdam': ['Jordaan', 'De Pijp', 'Centrum', 'Oud-West', 'Canal Ring'],
+            'berlin': ['Mitte', 'Kreuzberg', 'Prenzlauer Berg', 'Charlottenburg', 'Friedrichshain'],
+            'madrid': ['Sol', 'Malasaña', 'Chueca', 'Retiro', 'Salamanca'],
+            'lisbon': ['Alfama', 'Bairro Alto', 'Chiado', 'Belém', 'Príncipe Real']
         };
     }
 
     /**
-     * Extract city name from user message
-     * @param {string} message - User message
-     * @returns {string|null} Extracted city
+     * Get hotel recommendations with REAL DATA from Google Hotels
+     * @param {string} city - City name
+     * @param {Object} options - Search options (checkIn, checkOut, guests, budgetLevel)
+     * @returns {Promise<Object>} Hotel recommendations with real data
      */
-    extractCity(message) {
-        // Look for patterns like "hotels in Paris", "stay in Tokyo"
-        const patterns = [
-            /hotels? (?:in|at|near) ([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
-            /(?:stay|sleep|accommodation) (?:in|at|near) ([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
-            /where to stay in ([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
-            /(?:visiting|going to|traveling to) ([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i
-        ];
+    async getHotelRecommendations(city, options = {}) {
+        const cacheKey = `hotels_${city.toLowerCase()}_${options.checkIn || 'anytime'}_${options.budgetLevel || 'all'}`;
 
-        for (const pattern of patterns) {
-            const match = message.match(pattern);
-            if (match && match[1]) {
-                return match[1];
+        // Check cache first
+        if (this.cache.has(cacheKey)) {
+            const cached = this.cache.get(cacheKey);
+            if (Date.now() - cached.timestamp < this.cacheExpiry) {
+                return cached.data;
             }
         }
 
-        // Fallback: look for any capitalized word
-        const capitalizedPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/;
-        const match = message.match(capitalizedPattern);
-        return match ? match[1] : null;
+        // Try to get real data from SerpAPI (Google Hotels)
+        if (this.apiKey && !this.devMode) {
+            try {
+                const realData = await this.fetchRealHotelData(city, options);
+
+                // Cache the result
+                this.cache.set(cacheKey, {
+                    timestamp: Date.now(),
+                    data: realData
+                });
+
+                return realData;
+            } catch (error) {
+                console.error('❌ Error fetching real hotel data:', error.message);
+            }
+        }
+
+        const sampleData = this.generateRealisticHotelData(city, options);
+
+        const result = {
+            success: true,
+            city,
+            hotels: sampleData,
+            dataSource: 'sample',
+            checkIn: options.checkIn,
+            checkOut: options.checkOut,
+            note: 'Sample data - Add SERPAPI_KEY to .env for real Google Hotels data'
+        };
+
+        // Cache sample data too
+        this.cache.set(cacheKey, {
+            timestamp: Date.now(),
+            data: result
+        });
+
+        return result;
+    }
+
+    /**
+     * Fetch real hotel data from SerpAPI (Google Hotels)
+     * @param {string} city - City name
+     * @param {Object} options - Search options
+     * @returns {Promise<Object>} Real hotel data from Google
+     */
+    async fetchRealHotelData(city, options = {}) {
+        const {
+            checkIn = this.getDefaultCheckIn(),
+            checkOut = this.getDefaultCheckOut(),
+            adults = 2,
+            children = 0,
+            currency = 'USD'
+        } = options;
+
+        const params = {
+            engine: 'google_hotels',
+            q: city,
+            check_in_date: checkIn,
+            check_out_date: checkOut,
+            adults: adults,
+            children: children,
+            currency: currency,
+            api_key: this.apiKey,
+            gl: 'us',
+            hl: 'en'
+        };
+
+        try {
+            const response = await axios.get(this.apiBaseUrl, {
+                params,
+                timeout: 10000
+            });
+
+            const data = response.data;
+
+            // Check for errors
+            if (data.error) {
+                console.error('❌ SerpAPI error:', data.error);
+                throw new Error(data.error);
+            }
+
+            // Check for properties
+            if (!data.properties || data.properties.length === 0) {
+                throw new Error('No hotels found');
+            }
+
+            const hotels = data.properties.slice(0, 10).map((property, index) => {
+                // Extract price
+                const price = property.rate_per_night?.lowest || property.total_rate?.lowest || 0;
+                const priceFormatted = property.rate_per_night?.extracted_lowest || price;
+
+                // Extract rating
+                const rating = property.overall_rating || property.reviews?.score || 4.0;
+                const reviewCount = property.reviews?.count || 0;
+
+                // Extract category (star rating)
+                const starRating = property.hotel_class || property.type || 3;
+                const category = starRating >= 4 ? 'luxury' : starRating >= 3 ? 'mid-range' : 'budget';
+
+                // Extract amenities
+                const amenities = property.amenities || [];
+                const topAmenities = amenities.slice(0, 8);
+
+                // Extract images
+                const images = property.images || [];
+                const thumbnail = images[0]?.thumbnail || null;
+
+                return {
+                    name: property.name,
+                    category: category,
+                    rating: rating,
+                    reviewCount: reviewCount,
+                    price: {
+                        amount: priceFormatted,
+                        currency: currency,
+                        display: `${currency} ${priceFormatted}`,
+                        perNight: true
+                    },
+                    location: {
+                        neighborhood: property.neighborhood || property.district || 'City Center',
+                        city: city,
+                        distanceFromCenter: property.distance || 'N/A',
+                        walkScore: null,
+                        address: property.address || 'Address not available'
+                    },
+                    availability: {
+                        available: true,
+                        roomsLeft: null,
+                        message: property.deal || 'Check availability'
+                    },
+                    amenities: topAmenities,
+                    bookingUrl: property.link || `https://www.google.com/travel/hotels`,
+                    images: images.length,
+                    thumbnail: thumbnail,
+                    highlights: [
+                        property.description || `${starRating}-star hotel in ${city}`,
+                        property.deal || 'Book now for best rates',
+                        property.eco_certified ? 'Eco-certified property' : null
+                    ].filter(Boolean),
+                    guestRating: property.reviews?.positive_score || null,
+                    type: property.type || 'Hotel',
+                    checkIn: checkIn,
+                    checkOut: checkOut
+                };
+            });
+
+            return {
+                success: true,
+                city: city,
+                hotels: hotels,
+                dataSource: 'live',
+                note: 'Real data from Google Hotels',
+                checkIn: checkIn,
+                checkOut: checkOut,
+                totalResults: hotels.length
+            };
+
+        } catch (error) {
+            // Handle quota exceeded (429 error)
+            if (error.response?.status === 429) {
+                console.error('❌ SerpAPI quota exceeded. Enable dev mode to use sample data.');
+                throw new Error('API quota exceeded. Please try again later.');
+            }
+
+            // Handle bad request (400 error)
+            if (error.response?.status === 400) {
+                console.error('❌ Bad request to SerpAPI:', error.response?.data);
+                throw new Error('Invalid search parameters');
+            }
+
+            throw error;
+        }
+    }
+
+    /**
+     * Get default check-in date (tomorrow)
+     */
+    getDefaultCheckIn() {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD
+    }
+
+    /**
+     * Get default check-out date (3 days from now)
+     */
+    getDefaultCheckOut() {
+        const checkOut = new Date();
+        checkOut.setDate(checkOut.getDate() + 3);
+        return checkOut.toISOString().split('T')[0]; // YYYY-MM-DD
+    }
+
+    /**
+     * Generate realistic hotel data with prices, ratings, and availability
+     * @param {string} city - City name
+     * @param {Object} options - Search options
+     * @returns {Array} Array of hotel objects with realistic data
+     */
+    generateRealisticHotelData(city, options = {}) {
+        const cityLower = city.toLowerCase();
+        const neighborhoods = this.neighborhoodsByCity[cityLower] || ['City Center', 'Downtown', 'Old Town', 'Business District'];
+
+        const hotels = [];
+        const hotelCount = 8; // Generate 8 hotel options
+
+        for (let i = 0; i < hotelCount; i++) {
+            const category = this.getHotelCategory(i);
+            const hotel = this.generateSingleHotel(city, category, neighborhoods, i, options);
+            hotels.push(hotel);
+        }
+
+        // Sort by rating (highest first), then by price (lowest first)
+        return hotels.sort((a, b) => {
+            if (Math.abs(b.rating - a.rating) > 0.3) {
+                return b.rating - a.rating;
+            }
+            return a.price.amount - b.price.amount;
+        });
+    }
+
+    /**
+     * Determine hotel category based on index
+     * @param {number} index - Hotel index
+     * @returns {string} Hotel category
+     */
+    getHotelCategory(index) {
+        if (index < 2) return 'luxury';
+        if (index < 5) return 'mid-range';
+        return 'budget';
+    }
+
+    /**
+     * Generate a single hotel with realistic data
+     * @param {string} city - City name
+     * @param {string} category - Hotel category
+     * @param {Array} neighborhoods - Available neighborhoods
+     * @param {number} index - Hotel index
+     * @param {Object} options - Search options
+     * @returns {Object} Hotel object
+     */
+    generateSingleHotel(city, category, neighborhoods, index, options) {
+        const neighborhood = neighborhoods[index % neighborhoods.length];
+        const hotelName = this.generateHotelName(city, category, neighborhood, index);
+
+        // Price varies by category
+        const basePrice = this.getBasePriceByCategory(category);
+        const priceVariation = 1 + (Math.random() * 0.3 - 0.15); // ±15%
+        const finalPrice = Math.round(basePrice * priceVariation);
+
+        // Rating varies by category
+        const rating = this.getRatingByCategory(category);
+
+        // Availability
+        const availability = this.getAvailability(options);
+
+        // Amenities
+        const amenities = this.getAmenitiesByCategory(category);
+
+        // Distance from center
+        const distanceKm = 0.5 + Math.random() * 5; // 0.5-5.5 km from center
+
+        return {
+            name: hotelName,
+            category,
+            rating: rating,
+            reviewCount: Math.floor(Math.random() * 2000) + 500,
+            price: {
+                amount: finalPrice,
+                currency: 'USD',
+                display: `$${finalPrice}`,
+                perNight: true
+            },
+            location: {
+                neighborhood,
+                city,
+                distanceFromCenter: `${distanceKm.toFixed(1)} km`,
+                walkScore: Math.floor(70 + Math.random() * 30) // 70-100
+            },
+            availability: availability,
+            amenities: amenities,
+            bookingUrl: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}`,
+            images: 12 + Math.floor(Math.random() * 20), // 12-32 photos
+            highlights: this.getHighlightsByCategory(category, neighborhood)
+        };
+    }
+
+    /**
+     * Generate realistic hotel name
+     * @param {string} city - City name
+     * @param {string} category - Hotel category
+     * @param {string} neighborhood - Neighborhood name
+     * @param {number} index - Hotel index
+     * @returns {string} Hotel name
+     */
+    generateHotelName(city, category, neighborhood, index) {
+        const templates = {
+            'luxury': this.hotelTemplates.european,
+            'mid-range': this.hotelTemplates.modern,
+            'budget': this.hotelTemplates.budget
+        };
+
+        const template = templates[category] || this.hotelTemplates.modern;
+        const baseName = template[index % template.length];
+
+        // Sometimes add neighborhood to name
+        if (Math.random() > 0.5 && neighborhood) {
+            return `${neighborhood} ${baseName}`;
+        }
+
+        return `${city} ${baseName}`;
+    }
+
+    /**
+     * Get base price by category
+     * @param {string} category - Hotel category
+     * @returns {number} Base price per night
+     */
+    getBasePriceByCategory(category) {
+        const prices = {
+            'luxury': 250 + Math.random() * 200,    // $250-450
+            'mid-range': 100 + Math.random() * 100,  // $100-200
+            'budget': 40 + Math.random() * 60        // $40-100
+        };
+        return prices[category] || 100;
+    }
+
+    /**
+     * Get rating by category
+     * @param {string} category - Hotel category
+     * @returns {number} Rating (0-10)
+     */
+    getRatingByCategory(category) {
+        const ratings = {
+            'luxury': 8.5 + Math.random() * 1.3,     // 8.5-9.8
+            'mid-range': 7.5 + Math.random() * 1.3,  // 7.5-8.8
+            'budget': 6.5 + Math.random() * 1.5      // 6.5-8.0
+        };
+        return Math.round((ratings[category] || 7.5) * 10) / 10;
+    }
+
+    /**
+     * Get availability status
+     * @param {Object} options - Search options
+     * @returns {Object} Availability info
+     */
+    getAvailability(options) {
+        const available = Math.random() > 0.2; // 80% available
+        const roomsLeft = available ? Math.floor(Math.random() * 10) + 1 : 0;
+
+        return {
+            available,
+            roomsLeft,
+            message: available
+                ? roomsLeft <= 3
+                    ? `Only ${roomsLeft} rooms left!`
+                    : `${roomsLeft} rooms available`
+                : 'Sold out for these dates'
+        };
+    }
+
+    /**
+     * Get amenities by category
+     * @param {string} category - Hotel category
+     * @returns {Array} List of amenities
+     */
+    getAmenitiesByCategory(category) {
+        const baseAmenities = ['Free WiFi', 'Air conditioning', '24-hour front desk'];
+
+        const categoryAmenities = {
+            'luxury': [...baseAmenities, 'Spa', 'Pool', 'Gym', 'Restaurant', 'Bar', 'Concierge', 'Room service', 'Valet parking'],
+            'mid-range': [...baseAmenities, 'Gym', 'Restaurant', 'Bar', 'Business center', 'Breakfast included'],
+            'budget': [...baseAmenities, 'Shared kitchen', 'Luggage storage', 'Tour desk']
+        };
+
+        const amenities = categoryAmenities[category] || categoryAmenities['mid-range'];
+
+        // Randomly return 5-8 amenities
+        const count = 5 + Math.floor(Math.random() * 4);
+        return amenities.slice(0, count);
+    }
+
+    /**
+     * Get highlights by category
+     * @param {string} category - Hotel category
+     * @param {string} neighborhood - Neighborhood name
+     * @returns {Array} List of highlights
+     */
+    getHighlightsByCategory(category, neighborhood) {
+        const highlights = {
+            'luxury': [
+                'Luxurious rooms with premium furnishings',
+                'Exceptional service and attention to detail',
+                `Prime location in ${neighborhood}`,
+                'Recently renovated property'
+            ],
+            'mid-range': [
+                'Modern, comfortable rooms',
+                'Great value for money',
+                `Walking distance to ${neighborhood} attractions`,
+                'Highly rated by recent guests'
+            ],
+            'budget': [
+                'Clean and basic accommodations',
+                'Budget-friendly option',
+                `Good transport links from ${neighborhood}`,
+                'Popular with solo travelers'
+            ]
+        };
+
+        return highlights[category] || highlights['mid-range'];
+    }
+
+    /**
+     * Get booking tips for hotels
+     * @param {string} city - City name
+     * @returns {Array} Array of helpful tips
+     */
+    getBookingTips(city) {
+        return [
+            '💡 Book 2-4 weeks in advance for best rates',
+            '📅 Weekday stays (Mon-Thu) are typically 20-30% cheaper than weekends',
+            '🔍 Compare prices on Booking.com, Hotels.com, and Expedia',
+            '⭐ Filter by guest rating (8.0+) for quality assurance',
+            '📍 Stay near public transport to save on taxis',
+            '💳 Check if your credit card offers hotel perks or points',
+            '🍳 Hotels with breakfast included save $10-20 per day',
+            '🔔 Set price alerts if your dates are flexible'
+        ];
     }
 
     /**
@@ -211,48 +505,16 @@ class HotelService {
 
         return hotelKeywords.some(keyword => messageLower.includes(keyword));
     }
-
-    /**
-     * Get budget category suggestions
-     * @param {string} budgetLevel - budget, mid-range, or luxury
-     * @returns {Object} Budget suggestions
-     */
-    getBudgetSuggestions(budgetLevel) {
-        const suggestions = {
-            'budget': {
-                range: '$20-50 per night',
-                types: ['Hostels', 'Budget hotels', 'Guesthouses', 'Shared rooms'],
-                tips: [
-                    'Look for hostels with good reviews',
-                    'Consider shared dormitories for lowest prices',
-                    'Book directly with properties for best rates',
-                    'Stay slightly outside city center for better value'
-                ]
-            },
-            'mid-range': {
-                range: '$50-150 per night',
-                types: ['3-star hotels', 'Boutique hotels', 'Private rooms in good areas'],
-                tips: [
-                    'Book in advance for better rates',
-                    'Look for hotels with breakfast included',
-                    'Check for central locations with good transport links',
-                    'Read recent reviews on multiple platforms'
-                ]
-            },
-            'luxury': {
-                range: '$150+ per night',
-                types: ['4-5 star hotels', 'Luxury resorts', 'High-end boutique hotels'],
-                tips: [
-                    'Look for special packages and offers',
-                    'Consider loyalty programs for perks',
-                    'Book suites or rooms with views',
-                    'Check for included amenities (spa, breakfast, transfers)'
-                ]
-            }
-        };
-
-        return suggestions[budgetLevel] || suggestions['mid-range'];
-    }
 }
 
-export const hotelService = new HotelService();
+// Export class and create singleton lazily
+let _hotelServiceInstance = null;
+
+export const hotelService = new Proxy({}, {
+    get(target, prop) {
+        if (!_hotelServiceInstance) {
+            _hotelServiceInstance = new HotelService();
+        }
+        return _hotelServiceInstance[prop];
+    }
+});

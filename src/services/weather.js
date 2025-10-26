@@ -16,18 +16,22 @@ class WeatherService {
      * Extracts location from user message
      */
     extractLocation(message) {
-        // Pattern matching for common location mentions (case insensitive)
+        // Pattern matching for common location mentions
         const contextPatterns = [
-            // Match "visit/visiting" + location (non-greedy, stops at common words)
+            // Match "travel to" + location (capture and capitalize)
+            /\btravel(?:ing)?\s+to\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
+            // Match "visit/visiting" + location
             /\b(?:visit|visiting)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
-            // Match "going to/traveling to/travel to" + location
-            /\b(?:going to|traveling to|travel to)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
+            // Match "going to" + location
+            /\bgoing\s+to\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
             // Match "weather in/for" + location  
             /\bweather\s+(?:in|for)\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
             // Match "in" + location (but not "in the" or "in a")
             /\bin\s+([a-z]{3,}(?:\s+[a-z]+)?)\b(?!\s+the\b|\s+a\b)/i,
             // Match location + "weather/climate/temperature"
             /\b([a-z]{3,}(?:\s+[a-z]+)?)\s+(?:weather|climate|temperature)\b/i,
+            // Match "to" + location (but be more specific)
+            /\bto\s+([a-z]{3,}(?:\s+[a-z]+)?)\b/i,
         ];
 
         // Try context-based patterns first
@@ -36,11 +40,11 @@ class WeatherService {
             if (match && match[1]) {
                 let location = match[1].trim();
 
-                // Remove trailing time words
-                location = location.replace(/\s+(next|this|tomorrow|today|week|month)$/i, '');
+                // Remove trailing time/question words
+                location = location.replace(/\s+(next|this|tomorrow|today|week|month|what|when|best|time)$/i, '');
 
                 // Skip if it's a common word, not a location
-                const skipWords = ['there', 'here', 'home', 'back', 'get', 'how', 'what'];
+                const skipWords = ['there', 'here', 'home', 'back', 'get', 'how', 'what', 'to', 'the', 'best', 'time', 'travel', 'visit', 'go'];
                 if (skipWords.includes(location.toLowerCase())) {
                     continue;
                 }
@@ -51,6 +55,7 @@ class WeatherService {
                     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
                     .join(' ');
 
+                // Must be at least 3 characters
                 if (capitalized.length >= 3) {
                     return capitalized;
                 }
@@ -61,7 +66,7 @@ class WeatherService {
         const capitalizedWords = message.match(/\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?\b/g);
         if (capitalizedWords && capitalizedWords.length > 0) {
             // Filter out common words that aren't locations
-            const excludeWords = ['What', 'Where', 'When', 'How', 'Can', 'Should', 'Tell', 'Show', 'Give', 'The', 'This', 'That', 'Next', 'Week', 'Month', 'Year', 'Tomorrow', 'Today'];
+            const excludeWords = ['What', 'Where', 'When', 'How', 'Can', 'Should', 'Tell', 'Show', 'Give', 'The', 'This', 'That', 'Next', 'Week', 'Month', 'Year', 'Tomorrow', 'Today', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'Find', 'Best', 'Time', 'Want'];
             const filtered = capitalizedWords.filter(word => !excludeWords.includes(word));
             if (filtered.length > 0) {
                 return filtered[0];
@@ -109,10 +114,8 @@ class WeatherService {
      */
     async getCurrentWeather(locationName) {
         try {
-            // First, geocode the location
             const geoData = await this.geocodeLocation(locationName);
             if (!geoData) {
-                console.log(`Could not find location: ${locationName}`);
                 return null;
             }
 

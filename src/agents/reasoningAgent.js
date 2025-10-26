@@ -7,69 +7,8 @@ import { ChatOllama } from '@langchain/community/chat_models/ollama';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { travelTools } from './tools.js';
 import { config } from '../config.js';
-import { SYSTEM_PROMPT } from '../prompts/system.js';
+import { SYSTEM_PROMPT, STRICT_PROMPT, REACT_COT_PROMPT } from '../prompts/system.js';
 import { identifyQueryType } from '../prompts/templates.js';
-
-/**
- * Enhanced Chain of Thought prompt for ReAct agent with aggressive tool usage
- */
-const REACT_COT_PROMPT = `You are an expert travel planning assistant with access to real-time data tools.
-
-# CRITICAL RULES - READ CAREFULLY:
-
-## � RULE #1: TOOL RESULTS ARE SACRED
-- If a tool was executed, its results will appear in the conversation as a SystemMessage
-- YOU MUST USE THE EXACT DATA from tool results
-- NEVER make up or guess data when tool results are provided
-- If tool failed (returned null/error), say you couldn't get that data
-
-## 🔴 RULE #2: RESPOND NATURALLY
-- Use the tool data to create a helpful, conversational response
-- Don't mention the tool names or technical details
-- Don't say "According to get_weather" - just use the data naturally
-- Example: "Paris is currently 12°C with light rain" (from tool data)
-
-## 🔴 RULE #3: BE ACCURATE
-- Only state facts that come from tool results or general knowledge
-- Don't make up specific numbers (temperature, prices, etc.)
-- If uncertain, ask clarifying questions
-
-## Response Format:
-- Write naturally and conversationally
-- Use real data from tools when available
-- Be specific and actionable
-- Keep responses concise but complete
-
-Now help the user with their travel planning query using the tool results provided above!`;
-
-const STRICT_PROMPT = `You are a travel assistant. Follow these rules EXACTLY:
-
-🚨 CRITICAL RULES:
-
-1. ANSWER THE CURRENT QUESTION ONLY
-   - Look at the LAST user message to see what they just asked
-   - Don't continue previous conversations
-   - Don't talk about topics not mentioned in the current question
-
-2. IF TOOL RESULTS ARE PROVIDED → USE THEM
-   - Tool results appear as SystemMessage entries above
-   - Extract the exact data from tool results
-   - Use that data to answer the user's question
-   - Example: If get_weather returned Berlin 5°C → say "Berlin is currently 5°C"
-
-3. USE EXACT TOOL DATA - NO GUESSING
-   - If tool says temperature: 5°C → say "5°C" not "around 5°C"
-   - If tool says location: "Berlin" → talk about Berlin, not other cities
-   - If tool failed → say you couldn't get that data
-   - Don't make up data when tool provided real data
-
-4. BE NATURAL AND CONCISE
-   - Don't say "According to the tool..." or mention tool names
-   - Just use the data conversationally
-   - Keep responses short (2-3 sentences for simple queries)
-   - Example: "Berlin is currently 5°C with clear skies. It's quite chilly!"
-
-REMEMBER: Answer ONLY the current question using ONLY the tool data provided.`;
 
 /**
  * Creates and configures the reasoning agent
@@ -163,8 +102,6 @@ export class TravelReasoningAgent {
                     .join(' ');
 
                 if (location) {
-                    console.log(`   → Weather tool: Extracted location "${location}" from query`);
-
                     tools.push({
                         name: 'get_weather',
                         args: {
@@ -201,13 +138,165 @@ export class TravelReasoningAgent {
                     .join(' ');
 
                 if (location) {
-                    console.log(`   → Country tool: Extracted location "${location}" from query`);
-
                     tools.push({
                         name: 'get_country_info',
                         args: {
                             country: location,
                             reasoning: 'User query asks about country-specific information'
+                        }
+                    });
+                }
+            }
+        }
+
+        // Currency tool triggers
+        const currencyKeywords = ['shekel', 'shekels', 'nis', '₪', 'euro', 'euros', '€',
+            'dollar', 'dollars', '$', 'pound', 'pounds', '£', 'yen', 'convert', 'exchange',
+            'budget', 'cost', 'price', 'expensive', 'cheap', 'afford'];
+        const hasCurrency = currencyKeywords.some(kw => messageLower.includes(kw));
+        const hasNumber = /\d+/.test(userMessage);
+
+        if (hasCurrency && hasNumber) {
+            const currencyDetails = this.extractCurrencyConversion(userMessage);
+            if (currencyDetails) {
+                tools.push({
+                    name: 'convert_currency',
+                    args: currencyDetails
+                });
+            }
+        }
+
+        // Flight tool triggers
+        const flightKeywords = ['flight', 'flights', 'fly', 'flying', 'airline', 'plane',
+            'airport', 'ticket', 'direct flight', 'round trip', 'one way'];
+        if (flightKeywords.some(keyword => messageLower.includes(keyword))) {
+            const flightDetails = this.extractFlightCities(userMessage);
+            if (flightDetails) {
+                console.log(`   → Flight tool: Searching flights from ${flightDetails.origin} to ${flightDetails.destination}`);
+                tools.push({
+                    name: 'search_flights',
+                    args: {
+                        origin: flightDetails.origin,
+                        destination: flightDetails.destination,
+                        reasoning: 'User query asks about flights'
+                    }
+                });
+            }
+        }
+
+        // Hotel tool triggers
+        const hotelKeywords = ['hotel', 'hotels', 'stay', 'accommodation', 'lodging',
+            'hostel', 'reserve', 'book', 'room', 'where to stay'];
+        if (hotelKeywords.some(keyword => messageLower.includes(keyword))) {
+            const excludeWords = /\b(today|tomorrow|now|currently|right|this|next|week|month|year|september|october|november|december|january|february|march|april|may|june|july|august|find|cool|place|best|good|great)\b/i;
+
+            // Try to extract location from current message
+            let locationMatch = userMessage.match(/\b(?:in|at|near|around)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+
+            // If no location in current message, try pattern like "hotel in X"
+            if (!locationMatch) {
+                locationMatch = userMessage.match(/hotel[s]?\s+(?:in|at|near)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?)/i);
+            }
+
+            // If still no location, check conversation context
+            if (!locationMatch || !locationMatch[1] || excludeWords.test(locationMatch[1])) {
+                const contextLocation = this.extractLocationFromContext();
+                if (contextLocation) {
+                    tools.push({
+                        name: 'search_hotels',
+                        args: {
+                            city: contextLocation,
+                            reasoning: 'User query asks about accommodation, location from context'
+                        }
+                    });
+                }
+            } else {
+                let location = locationMatch[1].trim();
+                location = location.split(/\s+/)
+                    .filter(word => !excludeWords.test(word))
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+
+                if (location && location.length > 2) {
+                    tools.push({
+                        name: 'search_hotels',
+                        args: {
+                            city: location,
+                            reasoning: 'User query asks about accommodation'
+                        }
+                    });
+                }
+            }
+        }
+
+        // Places tool triggers (restaurants, attractions, things to do)
+        const placesKeywords = ['restaurant', 'restaurants', 'eat', 'eating', 'food', 'dine', 'dining',
+            'cafe', 'cafes', 'coffee', 'bar', 'bars', 'nightlife', 'drink',
+            'attraction', 'attractions', 'see', 'visit', 'sightseeing', 'tourist',
+            'museum', 'museums', 'gallery', 'galleries', 'art',
+            'things to do', 'activities', 'entertainment', 'fun',
+            'shopping', 'shop', 'market', 'markets',
+            'park', 'parks', 'garden', 'gardens', 'outdoor',
+            'landmark', 'landmarks', 'monument', 'monuments'];
+
+        // ONLY trigger if user explicitly mentions places-related keywords (use word boundaries!)
+        const hasPlacesKeyword = placesKeywords.some(keyword => {
+            // Use word boundaries to avoid matching "eat" in "weather"
+            const wordBoundaryRegex = new RegExp(`\\b${keyword}\\b`, 'i');
+            return wordBoundaryRegex.test(userMessage);
+        });
+
+        if (hasPlacesKeyword) {
+            const excludeWords = /\b(today|tomorrow|now|currently|right|this|next|week|month|year|september|october|november|december|january|february|march|april|may|june|july|august)\b/i;
+
+            // Try to extract location from current message
+            let locationMatch = userMessage.match(/\b(?:in|at|near|around)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+
+            // Try pattern like "restaurants in Paris", "things to see in London"
+            if (!locationMatch) {
+                locationMatch = userMessage.match(/(?:restaurant|eat|food|cafe|bar|attraction|see|visit|museum|park|shopping|things to (?:do|see))\s+(?:in|at|near)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?)/i);
+            }
+
+            // Try capitalized city names
+            if (!locationMatch) {
+                const words = userMessage.split(/\s+/);
+                for (const word of words) {
+                    if (/^[A-Z][a-z]{2,}$/.test(word) && !excludeWords.test(word)) {
+                        locationMatch = [null, word];
+                        break;
+                    }
+                }
+            }
+
+            // If still no location, check conversation context
+            if (!locationMatch || !locationMatch[1] || excludeWords.test(locationMatch[1])) {
+                const contextLocation = this.extractLocationFromContext();
+                if (contextLocation) {
+                    const placeType = this.detectPlaceType(userMessage);
+                    tools.push({
+                        name: 'search_places',
+                        args: {
+                            city: contextLocation,
+                            searchType: placeType,
+                            reasoning: 'User query asks about places, location from context'
+                        }
+                    });
+                }
+            } else {
+                let location = locationMatch[1].trim();
+                location = location.split(/\s+/)
+                    .filter(word => !excludeWords.test(word))
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+
+                if (location && location.length > 2) {
+                    const placeType = this.detectPlaceType(userMessage);
+                    tools.push({
+                        name: 'search_places',
+                        args: {
+                            city: location,
+                            searchType: placeType,
+                            reasoning: `User query asks about ${placeType}`
                         }
                     });
                 }
@@ -228,6 +317,313 @@ export class TravelReasoningAgent {
         }
 
         return tools;
+    }
+
+    /**
+     * Extract flight cities from message
+     */
+    extractFlightCities(message) {
+        // Pattern: "from X to Y" or "to Y from X"
+        const fromToPattern = /(?:from|flying from|travel from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+        const toFromPattern = /(?:to|flying to|fly to|travel to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+
+        let match = message.match(fromToPattern);
+        if (match) {
+            return {
+                origin: this.normalizeLocationForFlights(match[1]),
+                destination: this.normalizeLocationForFlights(match[2])
+            };
+        }
+
+        match = message.match(toFromPattern);
+        if (match) {
+            return {
+                origin: this.normalizeLocationForFlights(match[2]),
+                destination: this.normalizeLocationForFlights(match[1])
+            };
+        }
+
+        // Pattern: just "fly to X" - need to infer "from" from context
+        const toPattern = /(?:fly to|flight to|flying to|flights to|travel to|going to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+        match = message.match(toPattern);
+        if (match) {
+            // Check context for departure location
+            const fromContext = this.extractFlightOriginFromContext();
+            return {
+                origin: fromContext || 'Tel Aviv', // Default to Tel Aviv
+                destination: this.normalizeLocationForFlights(match[1])
+            };
+        }
+
+        // No explicit cities mentioned - check if this is a follow-up query
+        // Look for previous flight origins AND destinations in conversation
+        const destinationFromContext = this.extractFlightDestinationFromContext();
+        const originFromContext = this.extractFlightOriginFromContext();
+
+        if (destinationFromContext && originFromContext) {
+            return {
+                origin: originFromContext,
+                destination: destinationFromContext
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract previously discussed flight destination from context
+     */
+    extractFlightDestinationFromContext() {
+        // Look through recent messages for location mentions
+        // ONLY check USER messages, not assistant responses
+        const recentMessages = this.chatHistory.slice(-10);
+
+        for (const msg of recentMessages) {
+            // SKIP assistant/AI messages - only process human messages
+            if (msg._getType && msg._getType() === 'ai') {
+                continue;
+            }
+            if (msg.constructor && msg.constructor.name === 'AIMessage') {
+                continue;
+            }
+
+            const content = typeof msg.content === 'string' ? msg.content : '';
+
+            // Check for explicit from->to patterns first
+            const fromToPattern = /(?:from|flying from|travel from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+            const fromToMatch = content.match(fromToPattern);
+            if (fromToMatch) {
+                return this.normalizeLocationForFlights(fromToMatch[2]); // Return destination
+            }
+
+            // Check for flight-related destination mentions
+            const flightToPattern = /(?:fly to|flight to|flying to|flights to|travel to|going to|visit|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+            const match = content.match(flightToPattern);
+            if (match) {
+                return this.normalizeLocationForFlights(match[1]);
+            }
+
+            // Check for city/country mentions in responses
+            const cityPattern = /\b(Lisbon|Paris|London|Tokyo|New York|Rome|Barcelona|Berlin|Madrid|Amsterdam|Prague|Vienna|Athens|Dublin|Istanbul|Dubai|Bangkok|Singapore|Sydney|Melbourne)\b/i;
+            const cityMatch = content.match(cityPattern);
+            if (cityMatch) {
+                return cityMatch[1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract previously discussed flight origin from context
+     */
+    extractFlightOriginFromContext() {
+        // Look through recent messages for origin mentions
+        // ONLY check USER messages, not assistant responses
+        const recentMessages = this.chatHistory.slice(-10);
+
+        for (const msg of recentMessages) {
+            // SKIP assistant/AI messages - only process human messages
+            if (msg._getType && msg._getType() === 'ai') {
+                continue;
+            }
+            if (msg.constructor && msg.constructor.name === 'AIMessage') {
+                continue;
+            }
+
+            const content = typeof msg.content === 'string' ? msg.content : '';
+
+            // Check for explicit from->to patterns first (most reliable)
+            const fromToPattern = /(?:from|flying from|travel from|traveling from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+to\s+([A-Z][a-z]+)/i;
+            const fromToMatch = content.match(fromToPattern);
+            if (fromToMatch) {
+                return this.normalizeLocationForFlights(fromToMatch[1]); // Return origin
+            }
+
+            // Check for standalone "from X" mentions
+            const fromPattern = /\b(?:from|leaving from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/i;
+            const fromMatch = content.match(fromPattern);
+            if (fromMatch) {
+                return this.normalizeLocationForFlights(fromMatch[1]);
+            }
+        }
+
+        return null;
+    }    /**
+     * Normalize location names for flight service
+     * Handles countries by converting to major cities
+     */
+    normalizeLocationForFlights(location) {
+        const cityMap = {
+            'israel': 'Tel Aviv',
+            'portugal': 'Lisbon',
+            'spain': 'Madrid',
+            'france': 'Paris',
+            'italy': 'Rome',
+            'germany': 'Berlin',
+            'uk': 'London',
+            'united kingdom': 'London',
+            'usa': 'New York',
+            'united states': 'New York',
+            'japan': 'Tokyo',
+            'china': 'Beijing',
+            'australia': 'Sydney'
+        };
+
+        const locationLower = location.toLowerCase().trim();
+        return cityMap[locationLower] || location;
+    }
+
+    /**
+     * Extract location from conversation context (looks for DESTINATION/target location)
+     */
+    extractLocationFromContext() {
+        // Look through recent messages for destination mentions
+        // ONLY check USER messages, not assistant responses
+        const recentMessages = this.chatHistory.slice(-6); // Look at last 6 messages
+
+        // Words that are NOT locations (time/action words)
+        const excludeWords = [
+            'september', 'october', 'november', 'december', 'january', 'february',
+            'march', 'april', 'may', 'june', 'july', 'august',
+            'find', 'best', 'time', 'week', 'month', 'year', 'tomorrow', 'today',
+            'great', 'cool', 'place', 'the', 'a', 'during', 'when', 'where',
+            'season', 'mid', 'peak', 'off', 'cheapest', 'expensive', 'direct'
+        ];
+
+        for (const msg of recentMessages) {
+            // SKIP assistant/AI messages - only process human messages
+            if (msg._getType && msg._getType() === 'ai') {
+                continue;
+            }
+            if (msg.constructor && msg.constructor.name === 'AIMessage') {
+                continue;
+            }
+
+            const content = msg.content;
+
+            // Look for travel destination patterns (most specific first)
+            const destinationPatterns = [
+                // Explicit patterns first
+                /travel(?:ing)?\s+(?:from\s+[a-z]+\s+)?to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
+                /(?:fly|flying)\s+(?:from\s+[a-z]+\s+)?to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
+                /(?:going|go)\s+to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
+                /(?:visit|visiting)\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
+                /trip\s+to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
+                // "in [Location]" pattern - but must be followed by word boundary or punctuation
+                /\bin\s+([A-Z][a-z]{2,})\b(?![,\s]+(?:in|during|when))/,
+            ];
+
+            for (const pattern of destinationPatterns) {
+                const match = content.match(pattern);
+                if (match && match[1]) {
+                    let location = match[1].trim();
+
+                    // Filter out time/action words (check each word in multi-word matches)
+                    const words = location.toLowerCase().split(/\s+/);
+                    if (words.some(word => excludeWords.includes(word))) {
+                        continue; // Skip if any word is in exclude list
+                    }
+
+                    // Capitalize properly
+                    location = location
+                        .split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                        .join(' ');
+
+                    console.log(`      Found destination "${location}" in conversation history`);
+                    return location;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract currency conversion details from message
+     */
+    extractCurrencyConversion(message) {
+        // Extract amount
+        const amountMatch = message.match(/(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+        if (!amountMatch) return null;
+
+        const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+
+        // Common currency patterns
+        const currencyMap = {
+            'shekel': 'ILS', 'shekels': 'ILS', 'nis': 'ILS', '₪': 'ILS',
+            'euro': 'EUR', 'euros': 'EUR', '€': 'EUR',
+            'dollar': 'USD', 'dollars': 'USD', '$': 'USD', 'usd': 'USD',
+            'pound': 'GBP', 'pounds': 'GBP', '£': 'GBP',
+            'yen': 'JPY', '¥': 'JPY'
+        };
+
+        const messageLower = message.toLowerCase();
+        const foundCurrencies = [];
+
+        for (const [keyword, code] of Object.entries(currencyMap)) {
+            if (messageLower.includes(keyword)) {
+                if (!foundCurrencies.includes(code)) {
+                    foundCurrencies.push(code);
+                }
+            }
+        }
+
+        // If we found 2 different currencies, convert between them
+        if (foundCurrencies.length >= 2) {
+            return {
+                amount,
+                fromCurrency: foundCurrencies[0],
+                toCurrency: foundCurrencies[1],
+                reasoning: 'Currency conversion requested'
+            };
+        }
+
+        // If we found 1 currency, assume converting to EUR for travel planning
+        if (foundCurrencies.length === 1) {
+            const fromCurrency = foundCurrencies[0];
+            // Default target based on source
+            const toCurrency = fromCurrency === 'EUR' ? 'USD' : 'EUR';
+
+            return {
+                amount,
+                fromCurrency,
+                toCurrency,
+                reasoning: 'Budget conversion for travel planning'
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Detect the type of place being searched for
+     */
+    detectPlaceType(message) {
+        const messageLower = message.toLowerCase();
+
+        // Define patterns for each place type
+        const patterns = {
+            'restaurants': /restaurant|eat|eating|food|dine|dining|cuisine|meal/,
+            'cafes': /cafe|cafes|coffee|tea|breakfast|brunch/,
+            'bars': /bar|bars|pub|pubs|nightlife|drink|cocktail|beer/,
+            'museums': /museum|museums|gallery|galleries|art|exhibition/,
+            'attractions': /attraction|attractions|landmark|landmarks|monument|monuments|sightseeing|tourist|visit|see/,
+            'parks': /park|parks|garden|gardens|outdoor|nature/,
+            'shopping': /shop|shopping|market|markets|mall|stores/,
+            'things_to_do': /things to do|activities|entertainment|fun|experience/
+        };
+
+        // Check patterns in priority order
+        for (const [type, pattern] of Object.entries(patterns)) {
+            if (pattern.test(messageLower)) {
+                return type;
+            }
+        }
+
+        // Default to attractions if no specific type detected
+        return 'attractions';
     }
 
     /**
@@ -258,15 +654,26 @@ export class TravelReasoningAgent {
             // Execute detected tools FIRST (before asking LLM)
             if (requiredTools.length > 0) {
                 reasoningSteps++;
-                console.log(`\n🔍 Detected ${requiredTools.length} required tool(s) for this query`);
 
                 for (const toolCall of requiredTools) {
                     const tool = travelTools.find(t => t.name === toolCall.name);
                     if (tool) {
                         try {
-                            console.log(`🔧 Forcing execution: ${tool.name}(${JSON.stringify(toolCall.args)})`);
                             const toolResult = await tool.func(toolCall.args);
-                            toolsUsed.push({ tool: tool.name, input: toolCall.args });
+
+                            // Parse the JSON result to check success
+                            let parsedResult;
+                            try {
+                                parsedResult = typeof toolResult === 'string' ? JSON.parse(toolResult) : toolResult;
+                            } catch {
+                                parsedResult = { rawResult: toolResult };
+                            }
+
+                            toolsUsed.push({
+                                tool: tool.name,
+                                input: toolCall.args,
+                                result: parsedResult
+                            });
 
                             // Add tool result to messages for LLM context
                             messages.push(new SystemMessage(
@@ -274,6 +681,11 @@ export class TravelReasoningAgent {
                             ));
                         } catch (error) {
                             console.error(`   ✗ Error executing ${tool.name}:`, error.message);
+                            toolsUsed.push({
+                                tool: tool.name,
+                                input: toolCall.args,
+                                result: { success: false, error: error.message }
+                            });
                             messages.push(new SystemMessage(
                                 `Tool ${tool.name} failed with error: ${error.message}`
                             ));
@@ -291,10 +703,21 @@ export class TravelReasoningAgent {
 
             // 🔥 VALIDATION: Check if LLM is using tool results properly
             if (toolsUsed.length > 0) {
-                const weatherTool = toolsUsed.find(t => t.tool === 'get_weather');
+                // Add STRICT_PROMPT immediately after tools execute
+                messages.push(new SystemMessage(
+                    `${STRICT_PROMPT}\n\n` +
+                    `📊 TOOL RESULTS AVAILABLE ABOVE ⬆️\n` +
+                    `You MUST use the exact data from these tools in your response.\n` +
+                    `DO NOT invent prices, dates, or specific details that weren't provided.\n\n` +
+                    `Tools executed: ${toolsUsed.map(t => t.tool).join(', ')}`
+                ));
 
+                const weatherTool = toolsUsed.find(t => t.tool === 'get_weather');
+                const flightTool = toolsUsed.find(t => t.tool === 'search_flights');
+                const currencyTool = toolsUsed.find(t => t.tool === 'convert_currency');
+
+                // Validate weather tool usage
                 if (weatherTool) {
-                    // Extract weather location from tool results
                     const weatherMsg = messages.find(m =>
                         m._getType() === 'system' && m.content.includes('get_weather')
                     );
@@ -310,20 +733,15 @@ export class TravelReasoningAgent {
                                         .includes(weatherData.location.toLowerCase());
 
                                     if (!mentionsLocation) {
-                                        // LLM ignored tool result - force retry with strict prompt
-                                        console.warn(`⚠️  LLM ignored tool result for ${weatherData.location}, forcing strict response...`);
-
-                                        messages[0] = new SystemMessage(STRICT_PROMPT);
                                         messages.push(new SystemMessage(
                                             `🚨 CRITICAL INSTRUCTION:\n` +
                                             `The user asked about ${weatherData.location}.\n` +
-                                            `Use this EXACT data in your response:\n` +
+                                            `Use this EXACT data:\n` +
                                             `- Location: ${weatherData.location}, ${weatherData.country}\n` +
                                             `- Temperature: ${weatherData.temperature}°C (feels like ${weatherData.feelsLike}°C)\n` +
                                             `- Condition: ${weatherData.condition}\n` +
                                             `- Humidity: ${weatherData.humidity}%\n` +
-                                            `- Wind: ${weatherData.windSpeed} km/h\n\n` +
-                                            `Respond in 2-3 sentences about the current weather in ${weatherData.location}.`
+                                            `- Wind: ${weatherData.windSpeed} km/h`
                                         ));
 
                                         response = await this.llmWithTools.invoke(messages);
@@ -336,64 +754,96 @@ export class TravelReasoningAgent {
                         }
                     }
                 }
-            }
 
-            // Check if LLM response suggests using more tools (iterative reasoning)
-            // Look for patterns like "I should check..." or "Let me get..."
-            const maxIterations = 3;
-            let iterations = 0;
+                // Validate flight tool usage - PREVENT HALLUCINATED PRICES
+                if (flightTool) {
+                    const flightMsg = messages.find(m =>
+                        m._getType() === 'system' && m.content.includes('search_flights')
+                    );
 
-            while (iterations < maxIterations) {
-                const responseText = response.content || '';
-                const needsMoreData = /(?:I should|let me|I need to|I'll) (?:check|get|fetch|look up|find)/i.test(responseText);
-
-                if (!needsMoreData) break;
-
-                // Try to detect what additional tool might be needed
-                const additionalTools = this.detectRequiredTools(responseText);
-
-                if (additionalTools.length === 0) break;
-
-                console.log(`\n🔄 LLM suggested additional tool usage (iteration ${iterations + 1})`);
-                reasoningSteps++;
-
-                // Execute additional tools
-                for (const toolCall of additionalTools) {
-                    const tool = travelTools.find(t => t.name === toolCall.name);
-                    if (tool) {
+                    if (flightMsg) {
                         try {
-                            console.log(`🔧 Executing suggested tool: ${tool.name}(${JSON.stringify(toolCall.args)})`);
-                            const toolResult = await tool.func(toolCall.args);
-                            toolsUsed.push({ tool: tool.name, input: toolCall.args });
+                            const resultMatch = flightMsg.content.match(/returned:\n([\s\S]+)/);
+                            if (resultMatch) {
+                                const flightData = JSON.parse(resultMatch[1]);
 
-                            messages.push(new SystemMessage(
-                                `Additional tool ${tool.name} was executed and returned:\n${JSON.stringify(toolResult, null, 2)}`
-                            ));
-                        } catch (error) {
-                            console.error(`   ✗ Error executing ${tool.name}:`, error.message);
-                            messages.push(new SystemMessage(
-                                `Tool ${tool.name} failed with error: ${error.message}`
-                            ));
+                                // Check if response contains hallucinated prices (e.g., "$230", "$240")
+                                const responseText = response.content || '';
+                                const hasPricePattern = /\$\d{2,4}(?!\d)/.test(responseText);
+                                const hasSpecificDatePattern = /(?:March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?/.test(responseText);
+                                const hasAirlineNames = /(?:Turkish|Lufthansa|Austrian|Emirates|United|Delta|British Airways|Air France|KLM)\s+Airlines?/i.test(responseText);
+
+                                if (hasPricePattern || hasSpecificDatePattern || hasAirlineNames) {
+                                    messages.push(new SystemMessage(
+                                        `🚨 HALLUCINATION DETECTED! You invented flight details.\n\n` +
+                                        `CORRECT RESPONSE FORMAT:\n` +
+                                        `"I've found flight options from ${flightData.from} to ${flightData.to}.\n` +
+                                        `Check current prices and availability on:\n` +
+                                        `${flightData.bookingLinks ? flightData.bookingLinks.map(link => `- ${link.name}: ${link.url}`).join('\n') : ''}\n\n` +
+                                        `${flightData.tips ? flightData.tips.join('\n') : ''}\n\n` +
+                                        `DO NOT INVENT:\n` +
+                                        `- Specific prices like $230, $240, etc.\n` +
+                                        `- Specific dates like "March 13th" or "March 15th"\n` +
+                                        `- Airline names like Turkish Airlines, Lufthansa, etc.\n\n` +
+                                        `Flight prices change constantly. Direct users to check the booking sites."`
+                                    ));
+
+                                    response = await this.llmWithTools.invoke(messages);
+                                    reasoningSteps++;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error parsing flight data:', e.message);
                         }
                     }
                 }
 
-                // Get updated response with new tool results
-                reasoningSteps++;
-                response = await this.llmWithTools.invoke(messages);
-                iterations++;
+                // Validate currency tool usage
+                if (currencyTool) {
+                    const currencyMsg = messages.find(m =>
+                        m._getType() === 'system' && m.content.includes('convert_currency')
+                    );
+
+                    if (currencyMsg) {
+                        try {
+                            const resultMatch = currencyMsg.content.match(/returned:\n([\s\S]+)/);
+                            if (resultMatch) {
+                                const currencyData = JSON.parse(resultMatch[1]);
+
+                                if (currencyData.success && currencyData.converted) {
+                                    // Check if response mentions the converted amount
+                                    const responseText = response.content || '';
+                                    const convertedStr = currencyData.converted.toString();
+                                    const mentionsAmount = responseText.includes(convertedStr) ||
+                                        responseText.includes(Math.round(currencyData.converted).toString());
+
+                                    if (!mentionsAmount) {
+                                        messages.push(new SystemMessage(
+                                            `🚨 CRITICAL INSTRUCTION:\n` +
+                                            `Use this EXACT currency conversion:\n` +
+                                            `${currencyData.amount} ${currencyData.fromCurrency} = ${currencyData.converted.toFixed(2)} ${currencyData.toCurrency}\n` +
+                                            `Rate: ${currencyData.rate.toFixed(4)}`
+                                        ));
+
+                                        response = await this.llmWithTools.invoke(messages);
+                                        reasoningSteps++;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error parsing currency data:', e.message);
+                        }
+                    }
+                }
             }
 
             const duration = Date.now() - startTime;
 
-            // Extract final answer
             const finalAnswer = response.content || "I apologize, but I'm having trouble formulating a response. Could you rephrase your question?";
 
-            // Update chat history
             this.chatHistory.push(new HumanMessage(userMessage));
             this.chatHistory.push(new AIMessage(finalAnswer));
 
-            // Keep history manageable
             if (this.chatHistory.length > 20) {
                 this.chatHistory = this.chatHistory.slice(-20);
             }
