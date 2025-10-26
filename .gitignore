@@ -1,5 +1,3 @@
- # Ignore the todo markdown file
-todo.md
 # Dependencies
 node_modules/
 
