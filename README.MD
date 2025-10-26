@@ -1,211 +1,261 @@
 # Travel Assistant 🌍✈️
 
-AI-powered travel planning assistant with natural conversation flow, powered by Llama 3 8B and advanced prompt engineering.
+AI-powered travel planning assistant with natural, context-aware conversations powered by Llama 3 8B and advanced prompt engineering.
 
-## Features
+---
+
+## 📋 Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Prompt Engineering](#prompt-engineering)
+- [Testing](#testing)
+- [Project Requirements](#project-requirements)
+- [Documentation](#documentation)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## 🌟 Overview
+
+This Travel Assistant demonstrates expert-level prompt engineering and LLM conversation design. Built as a coding assignment, it showcases:
+
+- **Natural conversation flow** with context retention across 20+ messages
+- **Advanced prompt engineering** with 7-layer architecture
+- **Real-time data integration** from 6 external APIs
+- **Hallucination prevention** through validation layers
+- **Production-quality code** with 165 automated tests
+
+**Assignment Focus**: Prompt engineering and conversational quality over complex implementation.
+
+---
+
+## ✨ Features
 
 ### Core Capabilities
-- 🗺️ **Destination Recommendations**: Get personalized travel suggestions based on your preferences
-- 🎒 **Smart Packing Lists**: Season and destination-specific packing advice
-- 🏛️ **Attraction Suggestions**: Curated recommendations for things to see and do
-- 🌦️ **Real-time Weather Data**: Current weather conditions via Open-Meteo API
-- 🌍 **Country Information**: Detailed country data via REST Countries API
-- 💱 **Currency Exchange**: Real-time exchange rates and conversions via ExchangeRate-API
-- 🏨 **Hotel Recommendations**: Accommodation advice and lodging tips via Wikivoyage
-- ✈️ **Flight Information**: Flight booking guidance and airline recommendations
+
+- 🗺️ **Destination Recommendations** - Personalized suggestions based on budget, season, interests
+- 🎒 **Smart Packing Lists** - Weather-aware, activity-specific advice
+- 🏛️ **Local Attractions** - Curated recommendations with insider tips
+- 🌦️ **Real-time Weather** - Current conditions via Open-Meteo API
+- 🌍 **Country Information** - Culture, currency, language via REST Countries API
+- 💱 **Currency Conversion** - Live exchange rates via ExchangeRate-API
+- 🏨 **Hotel Search** - Accommodation recommendations via Wikivoyage
+- ✈️ **Flight Information** - Booking links and travel tips
 
 ### Advanced Features
-- 💬 **Context-Aware Conversations**: Remembers your preferences across the entire chat
-- 🎨 **Rich CLI Experience**: Color-coded output, animations, and progress indicators
-- 💾 **Conversation Export**: Save chat transcripts as markdown files
-- 🔧 **Interactive Commands**: `/help`, `/save`, `/clear`, `/exit`
-- ⚡ **Streaming Responses**: Real-time token-by-token output
 
-## Setup
+- 💬 **Context-Aware Conversations** - Remembers preferences across multi-turn dialogues
+- 🎨 **Rich CLI Experience** - Color-coded output, animations, progress indicators
+- 💾 **Conversation Export** - Save transcripts as markdown (`/save`)
+- 🔧 **Interactive Commands** - `/help`, `/history`, `/stats`, `/clear`, `/exit`
+- ⚡ **Streaming Responses** - Real-time token generation with typing indicators
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ installed
-- Ollama installed ([download here](https://ollama.ai))
 
-### Installation Steps
+- **Node.js** 18+ ([download](https://nodejs.org))
+- **Ollama** ([download](https://ollama.ai))
 
-1. **Clone and install dependencies**:
-   ```bash
-   npm install
-   ```
+### Installation
 
-2. **Start Ollama**:
-   ```bash
-   ollama serve
-   ```
+```bash
+# 1. Install dependencies
+npm install
 
-3. **Pull the model**:
-   ```bash
-   ollama pull llama3:8b
-   ```
+# 2. Start Ollama (in separate terminal)
+ollama serve
 
-4. **Run the assistant**:
-   ```bash
-   npm start
-   ```
+# 3. Pull Llama 3 model
+ollama pull llama3:8b
 
-## Usage
-
-### Sample Conversations
-
-**Destination Planning**:
-```
-You: I'm looking for a warm beach destination in November
-Assistant: [Provides recommendations with weather data and insights]
+# 4. Run the assistant
+npm start
 ```
 
-**Packing Help**:
-```
-You: What should I pack for Tokyo in winter?
-Assistant: [Generates categorized packing list based on current weather]
-```
+### Configuration (Optional)
 
-**Attractions**:
-```
-You: What are the must-see places in Paris?
-Assistant: [Suggests prioritized attractions with tips]
-```
+Create `.env` file:
 
-**Follow-up Questions**:
-```
-You: I prefer budget travel
-Assistant: [Adjusts recommendations based on your preference]
-You: What about street food?
-Assistant: [Remembers context and provides relevant suggestions]
+```env
+# LLM Settings
+OLLAMA_MODEL=llama3:8b
+TEMPERATURE=0.7              # 0.0-0.3 = factual, 0.6-0.8 = creative
+
+# API Keys (optional - enables real-time data)
+SERPAPI_KEY=your_key         # For flights, hotels, places
 ```
 
-### Interactive Commands
+---
 
-- `/help` - Display available commands and usage tips
-- `/save` - Export conversation to `transcripts/` folder
-- `/clear` - Reset conversation history and start fresh
-- `/exit` - Quit the application
+## 📖 Usage
 
-## Architecture
+### Example Conversations
 
-### Technology Stack
-- **LLM**: Ollama with Llama 3 8B (local, privacy-friendly)
-- **Framework**: LangChain (ReAct agent pattern)
-- **APIs**: Open-Meteo (weather), REST Countries (country data)
-- **CLI**: Node.js with chalk, ora, readline
+**Multi-turn Planning**:
+```
+You: I want a warm beach destination in November under $2000
+
+🤖: Based on current weather data, Cancún is perfect - 28°C and $1800 budget fits well...
+
+You: What should I pack?
+
+🤖: [Remembers Cancún context] For 28°C beach weather, pack light layers...
+
+You: Show me hotels
+
+🤖: [Searches Cancún hotels] Here are 5 options from $45/night...
+```
+
+**Real-time Data**:
+```
+You: What's the weather in Tokyo?
+
+🤖: [Fetches live data] Currently 15°C (59°F), partly cloudy. Perfect for sightseeing!
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show all available commands |
+| `/save` | Export conversation to `transcripts/` |
+| `/history` | View conversation messages |
+| `/stats` | Show agent statistics |
+| `/clear` | Reset conversation context |
+| `/exit` | Quit the assistant |
+
+---
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+- **LLM**: Ollama + Llama 3 8B (local, privacy-friendly)
+- **Framework**: LangChain ReAct agent pattern
+- **APIs**: 6 external data sources
+- **Interface**: Node.js CLI (chalk, readline)
 
 ### Project Structure
+
 ```
 src/
-├── config.js              # Configuration settings
-├── index-agent.js         # CLI interface and main loop
 ├── agents/
-│   ├── reasoningAgent.js  # Core agent logic with ReAct pattern
-│   └── tools.js           # LangChain tool definitions
-├── llm/
-│   └── client.js          # Ollama client wrapper
+│   ├── reasoningAgent.js    # ReAct pattern + forced tool execution
+│   └── tools.js              # 6 LangChain tools (weather, country, etc.)
 ├── prompts/
-│   ├── system.js          # System prompts and examples
-│   └── templates.js       # Query-specific templates
-└── services/
-    ├── weather.js         # Weather data from Open-Meteo API
-    ├── country.js         # Country data from REST Countries API
-    ├── currency.js        # Currency exchange from ExchangeRate-API
-    ├── hotels.js          # Hotel recommendations from Wikivoyage
-    └── flights.js         # Flight information and booking guidance
+│   ├── system.js             # Chain of thought + validation prompts
+│   └── templates.js          # Query-specific templates
+├── services/                 # External API integrations
+│   ├── weather.js            # Open-Meteo API
+│   ├── country.js            # REST Countries API
+│   ├── currency.js           # ExchangeRate-API
+│   ├── hotels.js             # Wikivoyage scraping
+│   ├── flights.js            # SerpAPI/mock data
+│   └── places.js             # Google Places API/mock
+└── index-agent.js            # CLI interface
+
+tests/                        # 165 tests across 50 suites
+transcripts/                  # Sample conversations
 ```
 
-## Prompt Engineering
+### Data Flow
 
-This project demonstrates advanced prompt engineering techniques:
+```
+User Input
+    ↓
+Query Type Detection (templates.js)
+    ↓
+Tool Detection (reasoningAgent.js) → Forced Execution
+    ↓
+LLM Response (with tool data in SystemMessage)
+    ↓
+Validation Layer (hallucination check)
+    ↓
+Formatted Output (CLI with colors/formatting)
+```
 
-- **Chain of Thought**: 6-step reasoning framework for complex queries
-- **Few-Shot Learning**: Examples demonstrating ideal response structure
-- **Context Injection**: Tool data added as system messages for highest priority
-- **Query-Specific Templates**: Tailored instructions for different request types
-- **Validation Layer**: Catches and corrects LLM hallucinations with automatic retry
-- **Forced Tool Execution**: Word boundary regex ensures accurate tool triggering
-- **Single-Pass Architecture**: Simplified execution flow prevents false positive tool calls
+---
 
-See [PROMPT_ENGINEERING.md](PROMPT_ENGINEERING.md) for detailed documentation.
+## 🧠 Prompt Engineering
 
-## Documentation
+This project demonstrates **advanced prompt engineering** as the primary technical achievement.
 
-- **[PROMPT_ENGINEERING.md](PROMPT_ENGINEERING.md)**: Deep dive into prompt design decisions
-- **[ENHANCEMENTS.md](ENHANCEMENTS.md)**: Advanced features and implementation details  
-- **[ADDING_TOOLS.md](ADDING_TOOLS.md)**: Guide to adding new external API tools
-- **[transcripts/](transcripts/)**: Sample conversation examples
+### Key Techniques
 
-## Requirements Met
+1. **7-Layer Prompt Architecture**
+   - Base system prompt (persona + principles)
+   - Chain of thought (6-step reasoning)
+   - Query-specific templates (destination, packing, etc.)
+   - Few-shot examples (3 ideal responses)
+   - Data integration prompt (natural blending)
+   - Error recovery prompt (graceful failures)
+   - Strict validation prompt (hallucination prevention)
 
-✅ **Conversation-First Design**: Handles 6+ query types with natural multi-turn flow  
-✅ **Enhanced Prompt Engineering**: Chain of thought, few-shot, validation, forced tool execution  
-✅ **Simple Technical Implementation**: JavaScript + Ollama + CLI (no complex frameworks)  
-✅ **Data Augmentation**: 6 external APIs (Weather, Country, Currency, Hotels, Flights, Places) with smart blending  
-✅ **Error Handling**: Graceful failures with user-friendly messages and fallbacks  
-✅ **Context Management**: Tracks 14+ preference types across conversation  
-✅ **Testing**: 144 automated tests across 30 test suites - all passing  
-✅ **Production-Ready**: Clean code, no debug logs, professional error handling  
+2. **Forced Tool Execution**
+   - **Problem**: Llama 3 8B has weak native function calling
+   - **Solution**: Keyword detection with word boundaries → pre-execute tools → inject data as SystemMessage
+   ```javascript
+   // Prevents "eat" in "weather" from triggering
+   const hasWeatherKeyword = /\b(weather|climate|temperature)\b/i.test(message);
+   ```
 
-## Development
+3. **Validation Layer**
+   - **Problem**: LLM might ignore tool data and hallucinate
+   - **Solution**: Check if response uses exact tool data → if not, retry with STRICT_PROMPT
+   ```javascript
+   if (!mentionsLocation) {
+       messages.push(new SystemMessage(STRICT_PROMPT));
+       response = await llm.invoke(messages); // Retry
+   }
+   ```
 
-### Running Tests
+4. **Context Injection**
+   - Tool results added as `SystemMessage` (highest priority)
+   - LLM receives: `[SystemPrompt, ChatHistory, ToolResults, UserMessage]`
+   - Forces LLM to acknowledge external data
+
+5. **Query-Specific Templates**
+   - Destination: "Be specific - name actual places, not regions"
+   - Packing: "Categorized list → Pro tips → Reassurance"
+   - Attractions: "Mix 60% famous + 40% hidden gems"
+
+---
+
+## 🧪 Testing
+
+**165 tests across 50 suites**
+
 ```bash
 # Run all tests
 npm test
 
-# Run tests in watch mode (auto-rerun on changes)
+# Watch mode (auto-rerun on changes)
 npm run test:watch
 ```
 
-**Test Coverage**:
-- **144 tests** across **30 test suites** - All passing ✅
-- **Services**: Weather (8+ location extraction scenarios), Country info, Currency conversion (22 tests), Hotels (27 tests), Flights (25 tests)
-- **Prompts**: Query type detection, template generation, system prompts
-- **Configuration**: Validation of all settings
-- **Agent Logic**: Tool detection with word boundaries, message history, response validation
+## ✅ Project Requirements
 
-See [tests/README.md](tests/README.md) for detailed testing documentation.
+This assignment required building a travel assistant focused on **conversation quality and prompt engineering**.
 
-### Testing
-Run the assistant and test with various queries:
-```bash
-npm start
-```
+### ✅ Core Requirements Met
 
-### Generating Transcripts
-1. Have a conversation with the assistant
-2. Type `/save` to export the transcript
-3. Find the markdown file in `transcripts/` folder
-
-### Configuration
-Edit `src/config.js` to customize:
-- Ollama host and model
-- Temperature and max tokens
-- API timeouts
-- Context window size
-
-## Troubleshooting
-
-**"Ollama is not available"**:
-- Ensure Ollama is running: `ollama serve`
-- Check if model is pulled: `ollama list`
-
-**Weather/Country data not appearing**:
-- Check internet connection (all APIs require network access)
-- APIs are free and don't require keys
-- Location extraction works with various formats (case-insensitive)
-- Word boundary regex ensures accurate keyword matching
-
-**Slow responses**:
-- Llama 3 8B model requires adequate RAM (4.7 GB)
-- Close other applications
-- Consider using llama3.2 (2 GB) for lower-end systems
-
-## License
-
-MIT
-
-## Author
-
-Eric Gantman - [GitHub](https://github.com/ericgantman)
+| Requirement | Implementation |
+|-------------|----------------|
+| **3+ query types** | 7 types (destination, packing, attractions, general, flights, hotels, places) |
+| **Follow-up handling** | 20-message context window with extraction methods |
+| **Natural conversation** | Query templates + context awareness + error recovery |
+| **Chain of thought** | 6-step reasoning framework (Decode → Context → Critical → Options → Pick → Next) |
+| **Concise responses** | Query-specific templates + token limits |
+| **Free LLM API** | Ollama (local, free) |
+| **Simple interface** | CLI with enhanced UX |
+| **1+ external API** | 6 APIs (weather, country, currency, hotels, flights, places) |
+| **Data blending** | SystemMessage injection + natural integration prompts |
+| **Decision method** | Keyword detection with word boundaries |

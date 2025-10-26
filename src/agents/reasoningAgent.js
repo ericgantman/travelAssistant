@@ -32,11 +32,7 @@ export class TravelReasoningAgent {
             temperature: config.ollama.temperature,
         });
 
-        // Note: Tool binding removed - we use manual tool detection instead
-        // llama3:8b doesn't have strong function calling support anyway
-
         this.initialized = true;
-        // Silent initialization - UI handled by index-agent.js
     }
 
     /**
@@ -317,9 +313,6 @@ export class TravelReasoningAgent {
      * Extract flight cities from message
      */
     extractFlightCities(message) {
-        // Pattern: "from X to Y" or "to Y from X"
-        // Match 1-3 word location names (case-insensitive), stop at word boundaries
-        // Use negative lookahead to prevent capturing helper words
         const fromToPattern = /(?:from|flying from|travel from)\s+([a-z]+(?:\s+[a-z]+){0,2}?)\s+to\s+([a-z]+(?:\s+[a-z]+){0,2}?)(?:\s+(?:help|find|search|book|get|show|in|for|during|on)\b|$)/i;
         const toFromPattern = /(?:to|flying to|fly to|travel to)\s+([a-z]+(?:\s+[a-z]+){0,2}?)\s+from\s+([a-z]+(?:\s+[a-z]+){0,2}?)(?:\s+(?:help|find|search|book|get|show|in|for|during|on)\b|$)/i;
 
@@ -339,8 +332,6 @@ export class TravelReasoningAgent {
             };
         }
 
-        // Pattern: just "fly to X" - need to infer "from" from context
-        // Match city name, stop before helper words or prepositions
         const toPattern = /(?:fly to|flight to|flying to|flights to|travel to|going to)\s+([a-z]+(?:\s+[a-z]+){0,2}?)(?:\s+(?:help|find|search|book|get|show|in|for|during|on)\b|$)/i;
         match = message.match(toPattern);
         if (match) {
@@ -352,8 +343,6 @@ export class TravelReasoningAgent {
             };
         }
 
-        // No explicit cities mentioned - check if this is a follow-up query
-        // Look for previous flight origins AND destinations in conversation
         const destinationFromContext = this.extractFlightDestinationFromContext();
         const originFromContext = this.extractFlightOriginFromContext();
 
@@ -371,8 +360,6 @@ export class TravelReasoningAgent {
      * Extract previously discussed flight destination from context
      */
     extractFlightDestinationFromContext() {
-        // Look through recent messages for location mentions
-        // ONLY check USER messages, not assistant responses
         const recentMessages = this.chatHistory.slice(-10);
 
         for (const msg of recentMessages) {
@@ -415,8 +402,6 @@ export class TravelReasoningAgent {
      * Extract previously discussed flight origin from context
      */
     extractFlightOriginFromContext() {
-        // Look through recent messages for origin mentions
-        // ONLY check USER messages, not assistant responses
         const recentMessages = this.chatHistory.slice(-10);
 
         for (const msg of recentMessages) {
@@ -430,14 +415,12 @@ export class TravelReasoningAgent {
 
             const content = typeof msg.content === 'string' ? msg.content : '';
 
-            // Check for explicit from->to patterns first (most reliable)
             const fromToPattern = /(?:from|flying from|travel from|traveling from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+to\s+([A-Z][a-z]+)/i;
             const fromToMatch = content.match(fromToPattern);
             if (fromToMatch) {
                 return this.normalizeLocationForFlights(fromToMatch[1]); // Return origin
             }
 
-            // Check for standalone "from X" mentions
             const fromPattern = /\b(?:from|leaving from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/i;
             const fromMatch = content.match(fromPattern);
             if (fromMatch) {
@@ -469,12 +452,10 @@ export class TravelReasoningAgent {
 
         const locationLower = location.toLowerCase().trim();
 
-        // If it's a country in our map, return the mapped city
         if (cityMap[locationLower]) {
             return cityMap[locationLower];
         }
 
-        // Otherwise, capitalize each word (for city names like "new york", "los angeles")
         return location
             .trim()
             .split(' ')
@@ -486,11 +467,8 @@ export class TravelReasoningAgent {
      * Extract location from conversation context (looks for DESTINATION/target location)
      */
     extractLocationFromContext() {
-        // Look through recent messages for destination mentions
-        // ONLY check USER messages, not assistant responses
         const recentMessages = this.chatHistory.slice(-6); // Look at last 6 messages
 
-        // Words that are NOT locations (time/action words)
         const excludeWords = [
             'september', 'october', 'november', 'december', 'january', 'february',
             'march', 'april', 'may', 'june', 'july', 'august',
@@ -500,7 +478,7 @@ export class TravelReasoningAgent {
         ];
 
         for (const msg of recentMessages) {
-            // SKIP assistant/AI messages - only process human messages
+            // SKIP assistant/AI messages
             if (msg._getType && msg._getType() === 'ai') {
                 continue;
             }
@@ -510,7 +488,7 @@ export class TravelReasoningAgent {
 
             const content = msg.content;
 
-            // Look for travel destination patterns (most specific first)
+            // Look for travel destination patterns
             const destinationPatterns = [
                 // Explicit patterns first
                 /travel(?:ing)?\s+(?:from\s+[a-z]+\s+)?to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
@@ -518,7 +496,7 @@ export class TravelReasoningAgent {
                 /(?:going|go)\s+to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
                 /(?:visit|visiting)\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
                 /trip\s+to\s+([a-z]{2,}(?:\s+[a-z]+)?)\b/i,
-                // "in [Location]" pattern - but must be followed by word boundary or punctuation
+                // "in [Location]" pattern
                 /\bin\s+([A-Z][a-z]{2,})\b(?![,\s]+(?:in|during|when))/,
             ];
 
@@ -527,13 +505,13 @@ export class TravelReasoningAgent {
                 if (match && match[1]) {
                     let location = match[1].trim();
 
-                    // Filter out time/action words (check each word in multi-word matches)
+                    // Filter out time/action words
                     const words = location.toLowerCase().split(/\s+/);
                     if (words.some(word => excludeWords.includes(word))) {
-                        continue; // Skip if any word is in exclude list
+                        continue;
                     }
 
-                    // Capitalize properly
+                    // Capitalize
                     location = location
                         .split(' ')
                         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -642,14 +620,13 @@ export class TravelReasoningAgent {
                 await this.initialize();
             }
 
-            // Identify query type for analytics (silent)
             const queryType = identifyQueryType(userMessage);
 
             const startTime = Date.now();
             const toolsUsed = [];
             let reasoningSteps = 0;
 
-            // 🔥 FORCE TOOL DETECTION - detect required tools upfront
+            // Detect required tools upfront
             const requiredTools = this.detectRequiredTools(userMessage);
 
             // Build messages array
@@ -667,8 +644,6 @@ export class TravelReasoningAgent {
                     if (tool) {
                         try {
                             const toolResult = await tool.func(toolCall.args);
-
-                            // Parse the JSON result to check success
                             let parsedResult;
                             try {
                                 parsedResult = typeof toolResult === 'string' ? JSON.parse(toolResult) : toolResult;
