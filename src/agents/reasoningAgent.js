@@ -1,13 +1,12 @@
 /**
- * Advanced Reasoning Agent with Chain of Thought
- * Uses LangChain's tool calling pattern for structured reasoning
+ * ReAct Agent with Tool Selection and Reasoning
+ * Implements a sophisticated reasoning pattern with tool orchestration
  */
-
-import { ChatOllama } from '@langchain/community/chat_models/ollama';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { ChatOllama } from '@langchain/ollama';
+import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { travelTools } from './tools.js';
 import { config } from '../config.js';
-import { SYSTEM_PROMPT, STRICT_PROMPT, REACT_COT_PROMPT } from '../prompts/system.js';
+import { STRICT_PROMPT, REACT_COT_PROMPT } from '../prompts/system.js';
 import { identifyQueryType } from '../prompts/templates.js';
 
 /**
@@ -33,26 +32,8 @@ export class TravelReasoningAgent {
             temperature: config.ollama.temperature,
         });
 
-        // Bind tools to the model
-        this.llmWithTools = this.llm.bind({
-            tools: travelTools.map(tool => ({
-                type: "function",
-                function: {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: {
-                        type: "object",
-                        properties: Object.fromEntries(
-                            Object.entries(tool.schema.shape || {}).map(([key, val]) => [
-                                key,
-                                { type: "string", description: val.description || "" }
-                            ])
-                        ),
-                        required: Object.keys(tool.schema.shape || {})
-                    }
-                }
-            }))
-        });
+        // Note: Tool binding removed - we use manual tool detection instead
+        // llama3:8b doesn't have strong function calling support anyway
 
         this.initialized = true;
         // Silent initialization - UI handled by index-agent.js
@@ -487,12 +468,12 @@ export class TravelReasoningAgent {
         };
 
         const locationLower = location.toLowerCase().trim();
-        
+
         // If it's a country in our map, return the mapped city
         if (cityMap[locationLower]) {
             return cityMap[locationLower];
         }
-        
+
         // Otherwise, capitalize each word (for city names like "new york", "los angeles")
         return location
             .trim()
@@ -725,7 +706,7 @@ export class TravelReasoningAgent {
 
             // Now ask LLM to synthesize response using tool results
             reasoningSteps++;
-            let response = await this.llmWithTools.invoke(messages);
+            let response = await this.llm.invoke(messages);
 
             // 🔥 VALIDATION: Check if LLM is using tool results properly
             if (toolsUsed.length > 0) {
@@ -770,7 +751,7 @@ export class TravelReasoningAgent {
                                             `- Wind: ${weatherData.windSpeed} km/h`
                                         ));
 
-                                        response = await this.llmWithTools.invoke(messages);
+                                        response = await this.llm.invoke(messages);
                                         reasoningSteps++;
                                     }
                                 }
@@ -820,7 +801,7 @@ export class TravelReasoningAgent {
                                         `Flight prices change constantly. Direct users to check the booking sites."`
                                     ));
 
-                                    response = await this.llmWithTools.invoke(messages);
+                                    response = await this.llm.invoke(messages);
                                     reasoningSteps++;
                                 }
                             }
@@ -857,7 +838,7 @@ export class TravelReasoningAgent {
                                             `Rate: ${currencyData.rate.toFixed(4)}`
                                         ));
 
-                                        response = await this.llmWithTools.invoke(messages);
+                                        response = await this.llm.invoke(messages);
                                         reasoningSteps++;
                                     }
                                 }

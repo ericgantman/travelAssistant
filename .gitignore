@@ -38,3 +38,6 @@ Thumbs.db
 
 # LLM API related (if any cache or temp files)
 .cache/
+
+# Transcripts or recordings
+transcripts/
