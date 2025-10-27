@@ -4,22 +4,6 @@ AI-powered travel planning assistant with natural, context-aware conversations p
 
 ---
 
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-- [Architecture](#architecture)
-- [Prompt Engineering](#prompt-engineering)
-- [Testing](#testing)
-- [Project Requirements](#project-requirements)
-- [Documentation](#documentation)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
-
----
-
 ## 🌟 Overview
 
 This Travel Assistant demonstrates expert-level prompt engineering and LLM conversation design. Built as a coding assignment, it showcases:
