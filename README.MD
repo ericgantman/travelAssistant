@@ -200,8 +200,6 @@ This project demonstrates **advanced prompt engineering** as the primary technic
 
 ## 🧪 Testing
 
-**165 tests across 50 suites**
-
 ```bash
 # Run all tests
 npm test
