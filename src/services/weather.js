@@ -40,16 +40,13 @@ class WeatherService {
             if (match && match[1]) {
                 let location = match[1].trim();
 
-                // Remove trailing time/question words
                 location = location.replace(/\s+(next|this|tomorrow|today|week|month|what|when|best|time)$/i, '');
-
-                // Skip if it's a common word, not a location
                 const skipWords = ['there', 'here', 'home', 'back', 'get', 'how', 'what', 'to', 'the', 'best', 'time', 'travel', 'visit', 'go'];
                 if (skipWords.includes(location.toLowerCase())) {
                     continue;
                 }
 
-                // Capitalize properly (handle multi-word cities like "New York")
+                // Capitalize properly
                 const capitalized = location
                     .split(' ')
                     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -62,7 +59,7 @@ class WeatherService {
             }
         }
 
-        // Fallback: extract any capitalized words (likely place names)
+        // Fallback: extract any capitalized words
         const capitalizedWords = message.match(/\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?\b/g);
         if (capitalizedWords && capitalizedWords.length > 0) {
             // Filter out common words that aren't locations
@@ -131,8 +128,6 @@ class WeatherService {
             });
 
             const current = response.data.current;
-
-            // Map weather codes to descriptions
             const weatherDescription = this.getWeatherDescription(current.weather_code);
 
             return {
