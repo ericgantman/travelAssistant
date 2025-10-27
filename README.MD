@@ -64,19 +64,6 @@ ollama pull llama3:8b
 npm start
 ```
 
-### Configuration (Optional)
-
-Create `.env` file:
-
-```env
-# LLM Settings
-OLLAMA_MODEL=llama3:8b
-TEMPERATURE=0.7              # 0.0-0.3 = factual, 0.6-0.8 = creative
-
-# API Keys (optional - enables real-time data)
-SERPAPI_KEY=your_key         # For flights, hotels, places
-```
-
 ---
 
 ## 📖 Usage
