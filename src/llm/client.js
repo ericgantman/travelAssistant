@@ -54,7 +54,7 @@ class OllamaClient {
                     },
                 },
                 {
-                    timeout: 60000, // 60 second timeout for responses
+                    timeout: 60000,
                 }
             );
 
@@ -93,8 +93,6 @@ class OllamaClient {
      * Generates a streaming chat completion (for future enhancement)
      */
     async chatStream(messages, onChunk) {
-        // Placeholder for streaming implementation
-        // Could be added later for better UX
         throw new Error('Streaming not yet implemented');
     }
 }
