@@ -118,7 +118,6 @@ function displayResponse(response) {
         console.log(chalk.dim('└───────────────────────────────────────────────────────────────┘'));
     }
 
-    // Format and display the response with better visual hierarchy
     console.log('\n' + chalk.bgGreen.black.bold(' ASSISTANT ') + '\n');
 
     const formatted = formatResponse(response.content);
@@ -131,32 +130,26 @@ function displayResponse(response) {
  * Format response with colors and structure
  */
 function formatResponse(text) {
-    // Split into paragraphs
     const paragraphs = text.split('\n\n');
 
     return paragraphs.map(para => {
-        // Highlight numbered lists (1., 2., etc.)
         if (para.match(/^\d+\./m)) {
             return para.split('\n').map(line => {
                 if (line.match(/^\d+\.\s+\*\*/)) {
-                    // Numbered list with bold (like "1. **When**")
                     return line.replace(/^(\d+)\.\s+\*\*([^*]+)\*\*/, (_, num, text) =>
                         chalk.cyan(`   ${num}.`) + ' ' + chalk.bold.yellow(text)
                     );
                 } else if (line.match(/^\d+\./)) {
-                    // Regular numbered list
                     return line.replace(/^(\d+)\./, chalk.cyan('   $1.'));
                 }
                 return '      ' + chalk.white(line);
             }).join('\n');
         }
 
-        // Highlight section headers (lines ending with :)
         if (para.match(/^[A-Z][^:]+:$/m)) {
             return '\n' + chalk.bold.yellow('│ ' + para) + '\n' + chalk.dim('│');
         }
 
-        // Highlight bullet points
         if (para.startsWith('- ') || para.startsWith('• ')) {
             return para.split('\n').map(line => {
                 if (line.startsWith('- ') || line.startsWith('• ')) {
@@ -166,14 +159,10 @@ function formatResponse(text) {
             }).join('\n');
         }
 
-        // Highlight bold text (**text**)
         para = para.replace(/\*\*([^*]+)\*\*/g, (_, text) => chalk.bold.yellow(text));
-
-        // Highlight numbers (prices, temperatures)
         para = para.replace(/\$\d+/g, match => chalk.bold.green(match));
         para = para.replace(/\d+°[CF]/g, match => chalk.bold.cyan(match));
 
-        // Highlight questions
         if (para.includes('?')) {
             para = para.split('\n').map(line => {
                 if (line.trim().endsWith('?')) {
@@ -183,7 +172,6 @@ function formatResponse(text) {
             }).join('\n');
         }
 
-        // Highlight special notes (P.S., Note:, etc.)
         if (para.match(/^\(P\.S\.|^\(Note:|^\(Tip:/i)) {
             return chalk.dim('   💡 ' + para);
         }
