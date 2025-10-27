@@ -9,18 +9,10 @@ import axios from 'axios';
 class FlightService {
     constructor() {
         this.cache = new Map();
-        // Extended cache: 24 hours to conserve API quota
-        this.cacheExpiry = 86400000; // 24 hours
-
-        // Development mode: set to true to skip API and use fallback
+        this.cacheExpiry = 86400000;
         this.devMode = process.env.FLIGHT_DEV_MODE === 'true' || false;
-
-        // SerpAPI for Google Flights (100 searches/month free)
-        // Sign up at: https://serpapi.com/
         this.apiKey = process.env.SERPAPI_KEY || null;
         this.apiBaseUrl = 'https://serpapi.com/search.json';
-
-        // Major airport codes for common cities
         this.airportCodes = {
             'london': 'LHR', 'paris': 'CDG', 'new york': 'JFK', 'tokyo': 'NRT',
             'los angeles': 'LAX', 'dubai': 'DXB', 'singapore': 'SIN', 'hong kong': 'HKG',
@@ -42,11 +34,10 @@ class FlightService {
             'porto': 'OPO', 'portugal': 'LIS'
         };
 
-        // Typical price ranges for routes (as fallback)
         this.priceEstimates = {
-            'short_haul_economy': { min: 50, max: 200, avg: 120 },      // < 3 hours
-            'medium_haul_economy': { min: 150, max: 400, avg: 250 },    // 3-6 hours
-            'long_haul_economy': { min: 400, max: 1200, avg: 700 },     // > 6 hours
+            'short_haul_economy': { min: 50, max: 200, avg: 120 },
+            'medium_haul_economy': { min: 150, max: 400, avg: 250 },
+            'long_haul_economy': { min: 400, max: 1200, avg: 700 },
             'short_haul_business': { min: 200, max: 500, avg: 350 },
             'medium_haul_business': { min: 500, max: 1000, avg: 750 },
             'long_haul_business': { min: 2000, max: 5000, avg: 3500 }
@@ -62,8 +53,6 @@ class FlightService {
      */
     async getFlightInfo(origin, destination, options = {}) {
         const cacheKey = `flight_${origin}_${destination}`.toLowerCase();
-
-        // Check cache
         const cached = this.cache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
             return cached.data;
@@ -78,7 +67,6 @@ class FlightService {
                 realFlightData = await this.fetchRealFlightData(originCode, destCode, options);
             }
 
-            // If API available, return real data
             if (realFlightData && realFlightData.flights && realFlightData.flights.length > 0) {
                 const result = {
                     success: true,
@@ -86,7 +74,7 @@ class FlightService {
                     to: destination,
                     originCode,
                     destCode,
-                    flights: realFlightData.flights, // Real flight data with prices!
+                    flights: realFlightData.flights,
                     dataSource: 'live',
                     tips: this.getFlightTips(origin, destination, options),
                     note: 'Prices and availability updated in real-time'
@@ -109,7 +97,7 @@ class FlightService {
                 originCode,
                 destCode,
                 flights: sampleFlights,
-                dataSource: 'generated', // Generated based on real airline routes
+                dataSource: 'generated',
                 tips: this.getFlightTips(origin, destination, options),
                 note: 'Flight prices shown are estimates. Verify availability and current prices with airlines.'
             };
@@ -144,7 +132,6 @@ class FlightService {
         if (!this.apiKey) return null;
 
         try {
-            // Calculate default departure date (30 days from now)
             const defaultDate = new Date();
             defaultDate.setDate(defaultDate.getDate() + 30);
             const departureDate = options.departDate || defaultDate.toISOString().split('T')[0];
@@ -158,29 +145,26 @@ class FlightService {
                 hl: 'en',
                 api_key: this.apiKey,
                 adults: options.passengers || 1,
-                type: 2 // 1 = Round trip, 2 = One way, 3 = Multi-city
+                type: 2
             };
 
             const response = await axios.get(this.apiBaseUrl, {
                 params,
-                timeout: 15000 // 15 second timeout
+                timeout: 15000
             });
 
             const data = response.data;
 
-            // Check for errors
             if (data.error) {
                 console.error('❌ SerpAPI error:', data.error);
                 return null;
             }
 
-            // Check for search_information errors (SerpAPI sometimes puts errors here)
             if (data.search_information?.google_flights_error) {
                 console.error('❌ SerpAPI error:', data.search_information.google_flights_error);
                 return null;
             }
 
-            // Combine best_flights and other_flights
             const allFlights = [
                 ...(data.best_flights || []),
                 ...(data.other_flights || [])
@@ -191,14 +175,9 @@ class FlightService {
             }
 
             const flights = allFlights.slice(0, 5).map((flightOffer) => {
-                // Get first and last flight segments
                 const firstFlight = flightOffer.flights?.[0] || {};
                 const lastFlight = flightOffer.flights?.[flightOffer.flights.length - 1] || {};
-
-                // Calculate total stops
                 const stops = (flightOffer.flights?.length || 1) - 1;
-
-                // Format duration (convert minutes to hours/minutes)
                 const totalMinutes = flightOffer.total_duration || 0;
                 const hours = Math.floor(totalMinutes / 60);
                 const minutes = totalMinutes % 60;
@@ -298,24 +277,16 @@ class FlightService {
         const today = new Date();
         const searchDate = options.departDate ? new Date(options.departDate) : new Date(today.getTime() + 30 * 86400000);
 
-        // Generate 3-5 realistic flight options
         for (let i = 0; i < 5; i++) {
             const departureDate = new Date(searchDate);
             departureDate.setDate(departureDate.getDate() + i);
-
-            // Vary departure times
             const departureHour = [6, 10, 14, 18, 22][i];
             departureDate.setHours(departureHour, 0, 0, 0);
-
-            // Calculate duration based on route
             const durationHours = this.getFlightDuration(routeType);
             const arrivalDate = new Date(departureDate.getTime() + durationHours * 3600000);
-
-            // Price varies by time and day
-            const priceVariation = 1 + (Math.random() * 0.3 - 0.15); // ±15% variation
-            const dayFactor = [6, 0].includes(departureDate.getDay()) ? 1.2 : 1; // Weekend premium
-            const timeFactor = departureHour < 8 || departureHour > 20 ? 0.9 : 1; // Off-peak discount
-
+            const priceVariation = 1 + (Math.random() * 0.3 - 0.15);
+            const dayFactor = [6, 0].includes(departureDate.getDay()) ? 1.2 : 1;
+            const timeFactor = departureHour < 8 || departureHour > 20 ? 0.9 : 1;
             const finalPrice = Math.round(basePrice.avg * priceVariation * dayFactor * timeFactor);
 
             flights.push({
@@ -347,7 +318,6 @@ class FlightService {
             });
         }
 
-        // Sort by price (cheapest first)
         return flights.sort((a, b) => a.price.amount - b.price.amount);
     }
 
@@ -366,17 +336,14 @@ class FlightService {
         const originLower = origin.toLowerCase();
         const destLower = destination.toLowerCase();
 
-        // Europe routes
         if (['london', 'paris', 'berlin', 'madrid', 'rome', 'lisbon', 'portugal'].some(c => originLower.includes(c) || destLower.includes(c))) {
             return european;
         }
 
-        // Asian routes
         if (['tokyo', 'singapore', 'bangkok', 'hong kong', 'dubai'].some(c => originLower.includes(c) || destLower.includes(c))) {
             return asian;
         }
 
-        // US routes
         if (['new york', 'los angeles', 'chicago', 'miami'].some(c => originLower.includes(c) || destLower.includes(c))) {
             return american;
         }
@@ -437,9 +404,9 @@ class FlightService {
      */
     getFlightDuration(routeType) {
         const durations = {
-            'short_haul': 1.5 + Math.random() * 1.5, // 1.5-3 hours
-            'medium_haul': 3 + Math.random() * 3,     // 3-6 hours
-            'long_haul': 8 + Math.random() * 6        // 8-14 hours
+            'short_haul': 1.5 + Math.random() * 1.5,
+            'medium_haul': 3 + Math.random() * 3,
+            'long_haul': 8 + Math.random() * 6
         };
         return durations[routeType] || 3;
     }

@@ -38,12 +38,10 @@ class PlacesService {
             }
         }
 
-        // Try to get real data from SerpAPI (Google Maps)
         if (this.apiKey && !this.devMode) {
             try {
                 const realData = await this.fetchRealPlacesData(city, type, query, maxResults);
 
-                // Cache the result
                 this.cache.set(cacheKey, {
                     timestamp: Date.now(),
                     data: realData
@@ -63,7 +61,6 @@ class PlacesService {
      * @private
      */
     async fetchRealPlacesData(city, type, customQuery, maxResults) {
-        // Build search query based on type
         let searchQuery = customQuery;
         if (!searchQuery) {
             const queryMap = {
@@ -84,7 +81,7 @@ class PlacesService {
             q: searchQuery,
             api_key: this.apiKey,
             type: 'search',
-            ll: '@40.7455096,-74.0083012,14z', // Will be overridden by query location
+            ll: '@40.7455096,-74.0083012,14z',
         };
 
         try {
@@ -95,41 +92,28 @@ class PlacesService {
 
             const data = response.data;
 
-            // Check for errors
             if (data.error) {
                 console.error('❌ SerpAPI error:', data.error);
                 throw new Error(data.error);
             }
 
-            // Check for local results (places)
             if (!data.local_results || data.local_results.length === 0) {
                 throw new Error('No places found');
             }
 
             const places = data.local_results.slice(0, maxResults).map((place, index) => {
-                // Extract price level ($ to $$$$)
                 const priceLevel = place.price || '$$';
-
-                // Extract rating
                 const rating = place.rating || 4.0;
                 const reviews = place.reviews || 0;
-
-                // Extract address
                 const address = place.address || 'Address not available';
-
-                // Extract type/category
                 const category = place.type || type;
-
-                // Extract description/snippet
                 const description = place.description ||
                     place.snippet ||
                     `Popular ${category} in ${city}`;
 
-                // Extract hours (if available)
                 const hours = place.hours || place.service_options || null;
                 const isOpen = place.open_state?.includes('Open') || null;
 
-                // Build Google Maps link
                 const mapsUrl = place.link ||
                     `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title + ' ' + city)}`;
 
@@ -171,13 +155,11 @@ class PlacesService {
             };
 
         } catch (error) {
-            // Handle quota exceeded (429 error)
             if (error.response?.status === 429) {
                 console.error('❌ SerpAPI quota exceeded. Enable dev mode to use sample data.');
                 throw new Error('API quota exceeded. Please try again later.');
             }
 
-            // Handle bad request (400 error)
             if (error.response?.status === 400) {
                 console.error('❌ Bad request to SerpAPI:', error.response?.data);
                 throw new Error('Invalid search parameters');

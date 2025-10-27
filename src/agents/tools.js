@@ -27,7 +27,6 @@ export const weatherTool = new DynamicStructuredTool({
 
     func: async ({ location, reasoning }) => {
         try {
-            // Fetch weather data
             const weather = await weatherService.getCurrentWeather(location);
 
             if (!weather) {
@@ -79,7 +78,6 @@ export const countryTool = new DynamicStructuredTool({
 
     func: async ({ country, reasoning }) => {
         try {
-            // Fetch country data
             const countryInfo = await countryService.getCountryInfo(country);
 
             if (!countryInfo) {
@@ -138,7 +136,6 @@ export const contextAnalysisTool = new DynamicStructuredTool({
     }),
 
     func: async ({ userMessage, previousContext = {} }) => {
-        // Analyze user preferences
         const analysis = {
             explicit_requirements: [],
             implicit_needs: [],
@@ -148,7 +145,6 @@ export const contextAnalysisTool = new DynamicStructuredTool({
 
         const messageLower = userMessage.toLowerCase();
 
-        // Budget analysis
         const budgetPatterns = {
             'budget': /budget|cheap|affordable|economical|under \$?\d+/,
             'luxury': /luxury|expensive|high-end|premium|splurge|5-star/,
@@ -162,7 +158,6 @@ export const contextAnalysisTool = new DynamicStructuredTool({
             }
         }
 
-        // Travel style analysis
         const stylePatterns = {
             'adventure': /adventure|hiking|active|outdoor|trek/,
             'relaxation': /relax|beach|spa|chill|peaceful/,
@@ -178,14 +173,12 @@ export const contextAnalysisTool = new DynamicStructuredTool({
             }
         }
 
-        // Duration extraction
         const durationMatch = messageLower.match(/(\d+)\s*(day|week|month)s?/);
         if (durationMatch) {
             analysis.preferences.duration = durationMatch[0];
             analysis.explicit_requirements.push(`Duration: ${durationMatch[0]}`);
         }
 
-        // Group type
         const groupPatterns = {
             'family': /family|kids|children|toddler/,
             'solo': /solo|alone|myself|by myself/,
@@ -200,7 +193,6 @@ export const contextAnalysisTool = new DynamicStructuredTool({
             }
         }
 
-        // Season/timing
         const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
         for (const month of months) {
             if (messageLower.includes(month)) {
@@ -209,7 +201,6 @@ export const contextAnalysisTool = new DynamicStructuredTool({
             }
         }
 
-        // Implicit needs inference
         if (analysis.preferences.group === 'family') {
             analysis.implicit_needs.push('Family-friendly activities and accommodations');
             analysis.implicit_needs.push('Safety considerations');
@@ -253,7 +244,6 @@ export const currencyTool = new DynamicStructuredTool({
     func: async ({ from, to, amount }) => {
         try {
             if (amount) {
-                // Perform conversion
                 const conversion = await currencyService.convertCurrency(amount, from, to);
 
                 if (!conversion) {
@@ -280,7 +270,6 @@ export const currencyTool = new DynamicStructuredTool({
                     }
                 });
             } else {
-                // Just get the rate
                 const rateData = await currencyService.getExchangeRate(from, to);
 
                 if (!rateData) {
@@ -331,7 +320,6 @@ export const hotelTool = new DynamicStructuredTool({
 
     func: async ({ city, budgetLevel }) => {
         try {
-            // Get hotel recommendations with real data (prices, ratings, availability)
             const hotelData = await hotelService.getHotelRecommendations(city, {
                 budgetLevel
             });
@@ -344,13 +332,11 @@ export const hotelTool = new DynamicStructuredTool({
                 });
             }
 
-            // Filter by budget level if specified
             let hotels = hotelData.hotels;
             if (budgetLevel && budgetLevel !== 'all') {
                 hotels = hotels.filter(h => h.category === budgetLevel);
             }
 
-            // Return structured hotel data with all details
             return JSON.stringify({
                 success: true,
                 city: hotelData.city,
@@ -414,7 +400,6 @@ export const flightTool = new DynamicStructuredTool({
 
     func: async ({ origin, destination, departDate }) => {
         try {
-            // Get flight information with REAL DATA
             const flightInfo = await flightService.getFlightInfo(origin, destination, { departDate });
 
             if (!flightInfo || !flightInfo.success) {
@@ -425,16 +410,14 @@ export const flightTool = new DynamicStructuredTool({
                 });
             }
 
-            // NEW FORMAT: Return actual flight data with prices, dates, airlines
             return JSON.stringify({
                 success: true,
                 from: flightInfo.from,
                 to: flightInfo.to,
                 route: `${flightInfo.from} (${flightInfo.originCode}) → ${flightInfo.to} (${flightInfo.destCode})`,
-                dataSource: flightInfo.dataSource, // 'live' or 'sample'
+                dataSource: flightInfo.dataSource,
                 note: flightInfo.note,
 
-                // ACTUAL FLIGHT OPTIONS with prices and dates!
                 flights: flightInfo.flights.map(flight => ({
                     airline: flight.airline,
                     flightNumber: flight.flightNumber,
@@ -456,10 +439,8 @@ export const flightTool = new DynamicStructuredTool({
                     bookingUrl: flight.bookingUrl
                 })),
 
-                // Helpful tips
                 tips: flightInfo.tips,
 
-                // Quick summary
                 summary: {
                     cheapestPrice: `$${flightInfo.flights[0].price.amount}`,
                     cheapestFlight: `${flightInfo.flights[0].airline} ${flightInfo.flights[0].flightNumber}`,
@@ -502,7 +483,6 @@ export const placesTool = new DynamicStructuredTool({
 
     func: async ({ city, searchType, specificQuery }) => {
         try {
-            // Search for places with real Google Maps data
             const placesData = await placesService.searchPlaces(city, {
                 type: searchType,
                 query: specificQuery,
@@ -517,16 +497,13 @@ export const placesTool = new DynamicStructuredTool({
                 });
             }
 
-            // Return structured places data
             return JSON.stringify({
                 success: true,
                 city: placesData.city,
                 searchType: placesData.searchType,
-                dataSource: placesData.dataSource, // 'live' or 'sample'
+                dataSource: placesData.dataSource,
                 totalResults: placesData.totalResults,
                 note: placesData.note,
-
-                // Real places with all details
                 places: placesData.places.map(place => ({
                     rank: place.rank,
                     name: place.name,
@@ -550,10 +527,7 @@ export const placesTool = new DynamicStructuredTool({
                     thumbnail: place.thumbnail
                 })),
 
-                // Helpful tips
                 tips: placesData.tips,
-
-                // Quick summary
                 summary: {
                     topRated: placesData.places[0]?.name,
                     topRating: placesData.places[0]?.rating.score,

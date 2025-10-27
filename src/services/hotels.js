@@ -9,18 +9,11 @@ import axios from 'axios';
 class HotelService {
     constructor() {
         this.cache = new Map();
-        // Extended cache: 24 hours to conserve API quota
         this.cacheExpiry = 86400000; // 24 hours
-
-        // Development mode: set to true to skip API and use fallback
         this.devMode = process.env.HOTELS_DEV_MODE === 'true' || process.env.FLIGHT_DEV_MODE === 'true';
-
-        // SerpAPI for Google Hotels (same key as flights and places!)
-        // Sign up at: https://serpapi.com/
         this.apiKey = process.env.SERPAPI_KEY || null;
         this.apiBaseUrl = 'https://serpapi.com/search.json';
 
-        // Hotel name templates by city type
         this.hotelTemplates = {
             european: ['Grand Hotel', 'Plaza Hotel', 'Royal Hotel', 'Palace Hotel', 'Central Hotel', 'Crown Hotel', 'Imperial Hotel', 'Majestic Hotel'],
             modern: ['City Inn', 'Metro Hotel', 'Urban Stay', 'Sky Hotel', 'Modern Suites', 'Downtown Hotel'],
@@ -28,7 +21,6 @@ class HotelService {
             boutique: ['Boutique Hotel', 'Art Hotel', 'Design Hotel', 'Signature Hotel', 'Heritage Hotel']
         };
 
-        // Neighborhood templates
         this.neighborhoodsByCity = {
             'paris': ['Le Marais', 'Latin Quarter', 'Montmartre', 'Saint-Germain', 'Champs-Élysées', 'Bastille'],
             'london': ['Covent Garden', 'Soho', 'Kensington', 'Westminster', 'Shoreditch', 'Camden'],
@@ -52,7 +44,6 @@ class HotelService {
     async getHotelRecommendations(city, options = {}) {
         const cacheKey = `hotels_${city.toLowerCase()}_${options.checkIn || 'anytime'}_${options.budgetLevel || 'all'}`;
 
-        // Check cache first
         if (this.cache.has(cacheKey)) {
             const cached = this.cache.get(cacheKey);
             if (Date.now() - cached.timestamp < this.cacheExpiry) {
@@ -60,12 +51,10 @@ class HotelService {
             }
         }
 
-        // Try to get real data from SerpAPI (Google Hotels)
         if (this.apiKey && !this.devMode) {
             try {
                 const realData = await this.fetchRealHotelData(city, options);
 
-                // Cache the result
                 this.cache.set(cacheKey, {
                     timestamp: Date.now(),
                     data: realData
@@ -89,7 +78,6 @@ class HotelService {
             note: 'Sample data - Add SERPAPI_KEY to .env for real Google Hotels data'
         };
 
-        // Cache sample data too
         this.cache.set(cacheKey, {
             timestamp: Date.now(),
             data: result
@@ -134,35 +122,24 @@ class HotelService {
 
             const data = response.data;
 
-            // Check for errors
             if (data.error) {
                 console.error('❌ SerpAPI error:', data.error);
                 throw new Error(data.error);
             }
 
-            // Check for properties
             if (!data.properties || data.properties.length === 0) {
                 throw new Error('No hotels found');
             }
 
             const hotels = data.properties.slice(0, 10).map((property, index) => {
-                // Extract price
                 const price = property.rate_per_night?.lowest || property.total_rate?.lowest || 0;
                 const priceFormatted = property.rate_per_night?.extracted_lowest || price;
-
-                // Extract rating
                 const rating = property.overall_rating || property.reviews?.score || 4.0;
                 const reviewCount = property.reviews?.count || 0;
-
-                // Extract category (star rating)
                 const starRating = property.hotel_class || property.type || 3;
                 const category = starRating >= 4 ? 'luxury' : starRating >= 3 ? 'mid-range' : 'budget';
-
-                // Extract amenities
                 const amenities = property.amenities || [];
                 const topAmenities = amenities.slice(0, 8);
-
-                // Extract images
                 const images = property.images || [];
                 const thumbnail = images[0]?.thumbnail || null;
 
@@ -217,13 +194,11 @@ class HotelService {
             };
 
         } catch (error) {
-            // Handle quota exceeded (429 error)
             if (error.response?.status === 429) {
                 console.error('❌ SerpAPI quota exceeded. Enable dev mode to use sample data.');
                 throw new Error('API quota exceeded. Please try again later.');
             }
 
-            // Handle bad request (400 error)
             if (error.response?.status === 400) {
                 console.error('❌ Bad request to SerpAPI:', error.response?.data);
                 throw new Error('Invalid search parameters');
@@ -262,7 +237,7 @@ class HotelService {
         const neighborhoods = this.neighborhoodsByCity[cityLower] || ['City Center', 'Downtown', 'Old Town', 'Business District'];
 
         const hotels = [];
-        const hotelCount = 8; // Generate 8 hotel options
+        const hotelCount = 8;
 
         for (let i = 0; i < hotelCount; i++) {
             const category = this.getHotelCategory(i);
@@ -270,7 +245,6 @@ class HotelService {
             hotels.push(hotel);
         }
 
-        // Sort by rating (highest first), then by price (lowest first)
         return hotels.sort((a, b) => {
             if (Math.abs(b.rating - a.rating) > 0.3) {
                 return b.rating - a.rating;
@@ -303,21 +277,12 @@ class HotelService {
         const neighborhood = neighborhoods[index % neighborhoods.length];
         const hotelName = this.generateHotelName(city, category, neighborhood, index);
 
-        // Price varies by category
         const basePrice = this.getBasePriceByCategory(category);
         const priceVariation = 1 + (Math.random() * 0.3 - 0.15); // ±15%
         const finalPrice = Math.round(basePrice * priceVariation);
-
-        // Rating varies by category
         const rating = this.getRatingByCategory(category);
-
-        // Availability
         const availability = this.getAvailability(options);
-
-        // Amenities
         const amenities = this.getAmenitiesByCategory(category);
-
-        // Distance from center
         const distanceKm = 0.5 + Math.random() * 5; // 0.5-5.5 km from center
 
         return {
@@ -363,7 +328,6 @@ class HotelService {
         const template = templates[category] || this.hotelTemplates.modern;
         const baseName = template[index % template.length];
 
-        // Sometimes add neighborhood to name
         if (Math.random() > 0.5 && neighborhood) {
             return `${neighborhood} ${baseName}`;
         }
@@ -378,9 +342,9 @@ class HotelService {
      */
     getBasePriceByCategory(category) {
         const prices = {
-            'luxury': 250 + Math.random() * 200,    // $250-450
-            'mid-range': 100 + Math.random() * 100,  // $100-200
-            'budget': 40 + Math.random() * 60        // $40-100
+            'luxury': 250 + Math.random() * 200,
+            'mid-range': 100 + Math.random() * 100,
+            'budget': 40 + Math.random() * 60
         };
         return prices[category] || 100;
     }
@@ -392,9 +356,9 @@ class HotelService {
      */
     getRatingByCategory(category) {
         const ratings = {
-            'luxury': 8.5 + Math.random() * 1.3,     // 8.5-9.8
-            'mid-range': 7.5 + Math.random() * 1.3,  // 7.5-8.8
-            'budget': 6.5 + Math.random() * 1.5      // 6.5-8.0
+            'luxury': 8.5 + Math.random() * 1.3,
+            'mid-range': 7.5 + Math.random() * 1.3,
+            'budget': 6.5 + Math.random() * 1.5
         };
         return Math.round((ratings[category] || 7.5) * 10) / 10;
     }
@@ -405,7 +369,7 @@ class HotelService {
      * @returns {Object} Availability info
      */
     getAvailability(options) {
-        const available = Math.random() > 0.2; // 80% available
+        const available = Math.random() > 0.2;
         const roomsLeft = available ? Math.floor(Math.random() * 10) + 1 : 0;
 
         return {
@@ -435,7 +399,6 @@ class HotelService {
 
         const amenities = categoryAmenities[category] || categoryAmenities['mid-range'];
 
-        // Randomly return 5-8 amenities
         const count = 5 + Math.floor(Math.random() * 4);
         return amenities.slice(0, count);
     }
@@ -507,7 +470,6 @@ class HotelService {
     }
 }
 
-// Export class and create singleton lazily
 let _hotelServiceInstance = null;
 
 export const hotelService = new Proxy({}, {

@@ -24,7 +24,6 @@ class CountryService {
      * Fetches country information
      */
     async getCountryInfo(countryName) {
-        // Check cache first
         if (this.cache.has(countryName)) {
             return this.cache.get(countryName);
         }
@@ -34,7 +33,7 @@ class CountryService {
                 timeout: 5000,
             });
 
-            const data = response.data[0]; // Get first match
+            const data = response.data[0];
             const info = {
                 name: data.name.common,
                 capital: data.capital?.[0] || 'N/A',
@@ -49,7 +48,6 @@ class CountryService {
                 drivingSide: data.car?.side || 'N/A',
             };
 
-            // Cache the result
             this.cache.set(countryName, info);
             return info;
         } catch (error) {

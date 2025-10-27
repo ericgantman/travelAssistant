@@ -21,7 +21,6 @@ class CurrencyService {
     async getExchangeRate(from, to) {
         const cacheKey = `${from}_${to}`;
 
-        // Check cache
         const cached = this.cache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
             return cached.data;
@@ -54,7 +53,6 @@ class CurrencyService {
                 calculation: (amount) => (amount * rate).toFixed(2)
             };
 
-            // Cache the result
             this.cache.set(cacheKey, {
                 data: result,
                 timestamp: Date.now()
@@ -106,7 +104,6 @@ class CurrencyService {
             return { from: matches[0], to: matches[1] };
         }
 
-        // Try to extract from natural language
         const currencyNames = {
             'dollar': 'USD', 'dollars': 'USD', 'usd': 'USD',
             'euro': 'EUR', 'euros': 'EUR', 'eur': 'EUR',
@@ -148,16 +145,14 @@ class CurrencyService {
      * @returns {number|null} Extracted amount
      */
     extractAmount(message) {
-        // Look for patterns like "$100", "100 dollars", "€50", etc.
         const amountPatterns = [
-            /[\$€£¥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/,  // $100, €50.25
+            /[\$€£¥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/,
             /(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:dollar|euro|pound|yen|yuan)/i
         ];
 
         for (const pattern of amountPatterns) {
             const match = message.match(pattern);
             if (match) {
-                // Remove commas and parse
                 const amount = parseFloat(match[1].replace(/,/g, ''));
                 if (!isNaN(amount) && amount > 0) {
                     return amount;
