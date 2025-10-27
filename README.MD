@@ -6,15 +6,13 @@ AI-powered travel planning assistant with natural, context-aware conversations p
 
 ## 🌟 Overview
 
-This Travel Assistant demonstrates expert-level prompt engineering and LLM conversation design. Built as a coding assignment, it showcases:
+This Travel Assistant demonstrates expert-level prompt engineering and LLM conversation design:
 
 - **Natural conversation flow** with context retention across 20+ messages
 - **Advanced prompt engineering** with 7-layer architecture
 - **Real-time data integration** from 6 external APIs
 - **Hallucination prevention** through validation layers
 - **Production-quality code** with 165 automated tests
-
-**Assignment Focus**: Prompt engineering and conversational quality over complex implementation.
 
 ---
 
