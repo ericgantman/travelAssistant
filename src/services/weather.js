@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { config } from '../config.js';
 
 /**
@@ -78,17 +77,17 @@ class WeatherService {
      */
     async geocodeLocation(locationName) {
         try {
-            const response = await axios.get(`${this.geocodingUrl}/search`, {
-                params: {
-                    name: locationName,
-                    count: 1,
-                    language: 'en',
-                    format: 'json',
-                },
-                timeout: 5000,
+            const params = new URLSearchParams({
+                name: locationName,
+                count: '1',
+                language: 'en',
+                format: 'json',
             });
+            const url = `${this.geocodingUrl}/search?${params.toString()}`;
 
-            const results = response.data.results;
+            const responseData = await this.fetchJson(url, { timeout: 5000 });
+
+            const results = responseData.results;
             if (!results || results.length === 0) {
                 return null;
             }
@@ -117,17 +116,16 @@ class WeatherService {
             }
 
             // Fetch weather data
-            const response = await axios.get(`${this.baseUrl}/forecast`, {
-                params: {
-                    latitude: geoData.latitude,
-                    longitude: geoData.longitude,
-                    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m',
-                    timezone: 'auto',
-                },
-                timeout: 5000,
+            const params = new URLSearchParams({
+                latitude: String(geoData.latitude),
+                longitude: String(geoData.longitude),
+                current: 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m',
+                timezone: 'auto',
             });
+            const url = `${this.baseUrl}/forecast?${params.toString()}`;
+            const responseData = await this.fetchJson(url, { timeout: 5000 });
 
-            const current = response.data.current;
+            const current = responseData.current;
             const weatherDescription = this.getWeatherDescription(current.weather_code);
 
             return {
@@ -142,6 +140,31 @@ class WeatherService {
         } catch (error) {
             console.error('Weather API error:', error.message);
             return null;
+        }
+    }
+
+    async fetchJson(url, options = {}) {
+        const timeout = options.timeout || 5000;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            const response = await fetch(url, {
+                signal: controller.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timed out after ${timeout}ms`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 

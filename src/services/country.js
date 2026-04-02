@@ -1,5 +1,3 @@
-import axios from 'axios';
-
 /**
  * Country information service using REST Countries API (free, no key required)
  * Provides useful country data for travel planning
@@ -29,11 +27,21 @@ class CountryService {
         }
 
         try {
-            const response = await axios.get(`${this.baseUrl}/name/${countryName}`, {
-                timeout: 5000,
-            });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-            const data = response.data[0];
+            const response = await fetch(`${this.baseUrl}/name/${countryName}`, {
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const responseData = await response.json();
+
+            const data = responseData[0];
             const info = {
                 name: data.name.common,
                 capital: data.capital?.[0] || 'N/A',
@@ -51,6 +59,11 @@ class CountryService {
             this.cache.set(countryName, info);
             return info;
         } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('Country API error: Request timed out after 5000ms');
+                return null;
+            }
+
             console.error('Country API error:', error.message);
             return null;
         }

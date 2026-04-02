@@ -4,8 +4,6 @@
  * Falls back to realistic sample data if API unavailable
  */
 
-import axios from 'axios';
-
 class HotelService {
     constructor() {
         this.cache = new Map();
@@ -115,12 +113,10 @@ class HotelService {
         };
 
         try {
-            const response = await axios.get(this.apiBaseUrl, {
+            const data = await this.fetchJson(this.apiBaseUrl, {
                 params,
-                timeout: 10000
+                timeout: 10000,
             });
-
-            const data = response.data;
 
             if (data.error) {
                 console.error('❌ SerpAPI error:', data.error);
@@ -194,17 +190,57 @@ class HotelService {
             };
 
         } catch (error) {
-            if (error.response?.status === 429) {
+            if (error.status === 429) {
                 console.error('❌ SerpAPI quota exceeded. Enable dev mode to use sample data.');
                 throw new Error('API quota exceeded. Please try again later.');
             }
 
-            if (error.response?.status === 400) {
-                console.error('❌ Bad request to SerpAPI:', error.response?.data);
+            if (error.status === 400) {
+                console.error('❌ Bad request to SerpAPI:', error.data);
                 throw new Error('Invalid search parameters');
             }
 
             throw error;
+        }
+    }
+
+    async fetchJson(url, options = {}) {
+        const {
+            params = {},
+            timeout = 10000,
+        } = options;
+
+        const finalUrl = new URL(url);
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                finalUrl.searchParams.set(key, String(value));
+            }
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            const response = await fetch(finalUrl, {
+                signal: controller.signal,
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                const error = new Error(`HTTP ${response.status}`);
+                error.status = response.status;
+                error.data = data;
+                throw error;
+            }
+
+            return data;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timed out after ${timeout}ms`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 

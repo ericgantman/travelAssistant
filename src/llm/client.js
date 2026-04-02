@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { config } from '../config.js';
 
 /**
@@ -18,11 +17,11 @@ class OllamaClient {
      */
     async checkAvailability() {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/tags`, {
+            const response = await this.fetchJson(`${this.baseUrl}/api/tags`, {
                 timeout: 3000,
             });
 
-            const models = response.data.models || [];
+            const models = response.models || [];
             const modelExists = models.some(m => m.name.includes(this.model));
 
             if (!modelExists) {
@@ -43,9 +42,10 @@ class OllamaClient {
      */
     async chat(messages) {
         try {
-            const response = await axios.post(
-                `${this.baseUrl}/api/chat`,
-                {
+            const response = await this.fetchJson(`${this.baseUrl}/api/chat`, {
+                method: 'POST',
+                timeout: 60000,
+                body: {
                     model: this.model,
                     messages: messages,
                     stream: false,
@@ -53,19 +53,16 @@ class OllamaClient {
                         temperature: this.temperature,
                     },
                 },
-                {
-                    timeout: 60000,
-                }
-            );
+            });
 
             return {
-                content: response.data.message.content,
+                content: response.message.content,
                 success: true,
             };
         } catch (error) {
             console.error('LLM generation error:', error.message);
 
-            if (error.code === 'ECONNREFUSED') {
+            if (error.code === 'ECONNREFUSED' || error.cause?.code === 'ECONNREFUSED') {
                 return {
                     content: null,
                     success: false,
@@ -73,7 +70,7 @@ class OllamaClient {
                 };
             }
 
-            if (error.response?.status === 404) {
+            if (error.status === 404) {
                 return {
                     content: null,
                     success: false,
@@ -86,6 +83,44 @@ class OllamaClient {
                 success: false,
                 error: `Error generating response: ${error.message}`,
             };
+        }
+    }
+
+    async fetchJson(url, options = {}) {
+        const {
+            method = 'GET',
+            body,
+            timeout = 5000,
+        } = options;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            const response = await fetch(url, {
+                method,
+                headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                body: body ? JSON.stringify(body) : undefined,
+                signal: controller.signal,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                const error = new Error(`HTTP ${response.status}`);
+                error.status = response.status;
+                error.data = data;
+                throw error;
+            }
+
+            return data;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timed out after ${timeout}ms`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 

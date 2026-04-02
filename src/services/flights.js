@@ -4,8 +4,6 @@
  * Falls back to general guidance if API unavailable
  */
 
-import axios from 'axios';
-
 class FlightService {
     constructor() {
         this.cache = new Map();
@@ -148,12 +146,10 @@ class FlightService {
                 type: 2
             };
 
-            const response = await axios.get(this.apiBaseUrl, {
+            const data = await this.fetchJson(this.apiBaseUrl, {
                 params,
-                timeout: 15000
+                timeout: 15000,
             });
-
-            const data = response.data;
 
             if (data.error) {
                 console.error('❌ SerpAPI error:', data.error);
@@ -227,13 +223,53 @@ class FlightService {
 
         } catch (error) {
             console.error('❌ Google Flights API error:', error.message);
-            if (error.response?.status === 429) {
+            if (error.status === 429) {
                 console.error('⚠️  API quota exceeded. Enable dev mode or wait for quota reset.');
             }
-            if (error.response?.data) {
-                console.error('API Response:', JSON.stringify(error.response.data, null, 2));
+            if (error.data) {
+                console.error('API Response:', JSON.stringify(error.data, null, 2));
             }
             return null;
+        }
+    }
+
+    async fetchJson(url, options = {}) {
+        const {
+            params = {},
+            timeout = 15000,
+        } = options;
+
+        const finalUrl = new URL(url);
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                finalUrl.searchParams.set(key, String(value));
+            }
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            const response = await fetch(finalUrl, {
+                signal: controller.signal,
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                const error = new Error(`HTTP ${response.status}`);
+                error.status = response.status;
+                error.data = data;
+                throw error;
+            }
+
+            return data;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timed out after ${timeout}ms`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
